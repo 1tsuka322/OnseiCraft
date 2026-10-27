@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  selftest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # selftest 不需要模型，也不读任何数据；只装最小依赖
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy zhconv
+
+      - name: Pipeline selftest (13 checks, no data required)
+        run: python pipeline/pipeline.py selftest
+
+      - name: Empty-subtitle gate selftest (4 cases)
+        run: python scripts/empty_check.py --selftest
+
+      - name: Byte-compile everything
+        run: python -m compileall -q pipeline scripts
+
+  leak-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse committed data / media / internal ledgers
+        run: |
+          fail=0
+          if git ls-files | grep -Ei '\.(mp3|flac|wav|m4a|onnx|gguf|bin|pt)$'; then
+            echo "::error::音频/模型文件被提交了"; fail=1
+          fi
+          if git ls-files | grep -E '^(RJ[0-9]|kikoerusubtitle|runs|regset|knowledge|tmp|internal|\.workbuddy)' | head -5; then
+            echo "::error::数据或内部台账被提交了（应被 .gitignore 挡住）"; fail=1
+          fi
+          if git ls-files '*.lrc' | grep -v '^examples/'; then
+            echo "::error::成品字幕被提交了（examples/ 下的合成样例除外）"; fail=1
+          fi
+          [ "$fail" = "0" ] && echo "OK"
+          exit $fail

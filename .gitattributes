@@ -1,0 +1,13 @@
+# 统一用 LF：Windows 上 git 默认把文本转 CRLF，会让每次导出都显示「全部改动」
+* text=auto eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.txt text eol=lf
+*.lrc text eol=lf
+
+# 二进制（不会进库，但防止误提交时被当文本 diff）
+*.mp3 binary
+*.flac binary
+*.wav binary

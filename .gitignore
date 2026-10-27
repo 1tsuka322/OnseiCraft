@@ -1,0 +1,51 @@
+# 数据与内部资料：全部不进版本库
+# —— 音频/成品/语料/锁/台账都是从他人作品派生的内容，公开有版权风险；
+#    内部台账里还含大量露骨例句与真实作品号。
+
+# 原始音频（每部作品一个 RJ 目录）
+RJ[0-9]*/
+
+# 成品字幕与回收站
+kikoerusubtitle/
+kikoerusubtitle_rec/
+
+# 暂存与试听材料
+learning/
+listen_*/
+
+# 中间产物 / 语料 / 回归集 / 锁 / 覆盖层 / 风格库 / 模型
+.workbuddy/
+.workbuddy-ai/
+
+# 运行产物
+runs/
+regset/
+knowledge/
+tmp/
+tools/
+
+# 内部台账（文档、SKILL.md、ID 映射）
+internal/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 模型权重
+models/
+*.onnx
+*.gguf
+*.pt
+*.bin
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

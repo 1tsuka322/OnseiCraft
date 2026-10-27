@@ -1,0 +1,12 @@
+# 核心依赖
+faster-whisper>=1.0.0      # ASR（含 ctranslate2 / av）
+numpy>=1.24
+
+# 简体/繁体判定（check.py 用；缺了只是少一项检查，不阻塞）
+zhconv>=1.4.3
+
+# 说明：
+# - 02_asr_fix / 05_term_lock / 06_checks 三个阶段**不调模型**，
+#   只装上面这些就能跑通门禁与自检。
+# - 03_translate / 04_polish 需要一个本地推理服务（llama.cpp server 或兼容 OpenAI 的端点），
+#   不是 pip 包，见 docs/PIPELINE.md。
