@@ -657,7 +657,8 @@ python review.py --rj RJ9000014 --apply patch.json # 写回改动 + 把锁定行
 ```bash
 python errata_audit.py                     # 37 条逐条 verdict（AUTO_OK/AUTO_UNSAFE/GUARD_THIN/REVIEW/CONSUMED）
 python errata_audit.py --guard-samples 悪夢 20   # 逐段展示原文 + 「ctx 是否命中」
-python errata_audit.py --test              # 门禁：37/37 断言（test_regressions 的 3n 段调它）
+python errata_audit.py --test              # 门禁：44/44 断言（test_regressions 的 3n 段调它）
+                                           # 语料不全时降级为「结构断言 7/7 + SKIP 语料断言」，exit 0
 python errata_audit.py --json              # 每条一行 dict
 ```
 
