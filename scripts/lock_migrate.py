@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import time
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))

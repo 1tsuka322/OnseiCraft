@@ -33,6 +33,7 @@ r"""开头补扫：修 Whisper「首个 30 秒窗被整窗丢弃」导致的开�
 """
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import re
 import json
 import glob

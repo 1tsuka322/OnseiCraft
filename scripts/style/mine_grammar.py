@@ -23,6 +23,7 @@ r"""语法/语气模式挖掘 v1（2026-10-22，learningskill 第三条通道）
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import json
 import glob
 import argparse

@@ -25,6 +25,7 @@ import os
 import re
 import sys
 
+sys.stdout.reconfigure(encoding="utf-8")
 # ⚠️ 必须在 import translate/cues **之前**定口径：`cues.ENABLED` 在 import 时读一次。
 # 交付口径是 cue 模式（cue_pipeline=1）；不设会静默退成旧的「显示行」模式，
 # 重建出来的行数与生产对不上（实测 489 vs 547 行 → 73 条假缺失）。

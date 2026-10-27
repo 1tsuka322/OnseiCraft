@@ -16,6 +16,7 @@ r"""
 """
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import time
 import argparse
 import subprocess

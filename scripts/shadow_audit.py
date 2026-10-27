@@ -22,6 +22,7 @@ import os
 import re
 import sys
 
+sys.stdout.reconfigure(encoding="utf-8")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.join(HERE, "..", "..", "skills", "kikoeru-subtitle", "scripts")
 sys.path.insert(0, os.path.abspath(SCRIPTS))

@@ -26,6 +26,7 @@ CLI（默认干跑；--apply 才写盘）：
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import glob
 import json
 import argparse

@@ -3,6 +3,7 @@
 import os
 import sys
 
+sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_library as B  # noqa: E402
 import align_style as A  # noqa: E402

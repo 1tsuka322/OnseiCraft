@@ -32,6 +32,7 @@ import os
 import re
 import sys
 
+sys.stdout.reconfigure(encoding="utf-8")
 MAX_SPANS = 4          # 一条 cue 最多遮几个
 # 是否在 polish 管线里启用遮蔽（可用 KIKOERU_MASK_NONLEX=0 关掉做 A/B）
 ENABLED = os.environ.get("KIKOERU_MASK_NONLEX", "1") != "0"

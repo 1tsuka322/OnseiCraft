@@ -15,6 +15,7 @@ kikoeru ASR：把音频识别为日文，产出含词级时间戳的 JSON。
 """
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import json
 import time
 import glob

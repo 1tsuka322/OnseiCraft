@@ -25,6 +25,7 @@ PDF 覆盖更广（RJ9000013/RJ9000014/RJ9000007 只有 PDF 没 txt）。竖排 
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import json
 import glob
 import argparse

@@ -18,6 +18,7 @@ import os
 import json
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import glob
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -644,14 +645,24 @@ def check_new_rules(verbose):
     if verbose:
         print("   整块复制用例 %d 条通过" % len(DUP_BLOCK_CASES))
     # 纯 filler 行豁免
-    for ja, want in FILLER_CASES:
-        got = is_filler_only(ja)
-        if got != want:
-            bad.append(("filler_only", ja, got, want))
-            if verbose:
-                print("   %-16s -> ❌ %r（期望 %s）" % ("filler_only", got, want))
-    if verbose:
-        print("   filler 用例 %d 条通过" % len(FILLER_CASES))
+    # ⚠️ 依赖 janome（日语分词）。缺了这些用例**跳过**而不是判失败：
+    # 公开仓库的 requirements 里虽然有 janome，但别人可能用最小环境跑。
+    try:
+        import janome  # noqa: F401
+        _has_janome = True
+    except Exception:
+        _has_janome = False
+    if not _has_janome:
+        SKIPPED.append(("filler_only", "无 janome", "pip install janome"))
+    else:
+        for ja, want in FILLER_CASES:
+            got = is_filler_only(ja)
+            if got != want:
+                bad.append(("filler_only", ja, got, want))
+                if verbose:
+                    print("   %-16s -> ❌ %r（期望 %s）" % ("filler_only", got, want))
+        if verbose:
+            print("   filler 用例 %d 条通过" % len(FILLER_CASES))
     # 句尾「か」三态分类（learningskill mine_grammar.classify_ka，坑 100 的三处修正）
     try:
         sys.path.insert(0, os.path.join(ROOT, "scripts", "style"))
@@ -664,6 +675,9 @@ def check_new_rules(verbose):
                     print("   %-16s -> ❌ %r → %s（期望 %s）" % ("ka_end", s, got, want))
         if verbose:
             print("   ka_end 用例 %d 条通过" % len(KA_END_CASES))
+    except ImportError as e:
+        # 缺依赖（多半是 janome）→ 跳过，不判失败
+        SKIPPED.append(("ka_end", "缺依赖", str(e)[:40]))
     except Exception as e:
         bad.append(("ka_end_import", str(e)[:40], None, None))
 

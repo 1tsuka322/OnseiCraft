@@ -12,6 +12,7 @@
 import json
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))

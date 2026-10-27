@@ -32,6 +32,7 @@ asmr.one 上的台本 PDF 绝大多数是**縦書き（竖排）**排版，pypdf
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import argparse
 import collections
 

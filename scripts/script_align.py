@@ -29,6 +29,7 @@ ASR 32 句），句子级 DP 对齐匹配率只有 48%。而且台本会把同�
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import json
 import glob
 import difflib

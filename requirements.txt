@@ -2,6 +2,9 @@
 faster-whisper>=1.0.0      # ASR（含 ctranslate2 / av）
 numpy>=1.24
 
+# 日语分词（02 改错的 filler 判定、术语成词性校验都要用）
+janome>=0.5.0
+
 # 简体/繁体判定（check.py 用；缺了只是少一项检查，不阻塞）
 zhconv>=1.4.3
 

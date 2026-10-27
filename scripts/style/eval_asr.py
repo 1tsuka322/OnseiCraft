@@ -16,6 +16,7 @@ r"""
 """
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import re
 import json
 import glob

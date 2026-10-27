@@ -13,6 +13,7 @@ asr.py 从今往后会自动剔除；本脚本用来清洗更早产出的 JSON�
 """
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import json
 import glob
 import argparse

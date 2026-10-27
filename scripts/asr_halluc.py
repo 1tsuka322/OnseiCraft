@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import collections
 
 DRAFT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),

@@ -25,6 +25,7 @@ whisper large-v3 encoder（1280 维均值池化）+ 2 层 MLP，用 A8 遮蔽器
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import json
 import glob
 import argparse

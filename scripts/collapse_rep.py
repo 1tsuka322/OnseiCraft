@@ -17,6 +17,7 @@ Whisper 在「一段够长但没有明确语音」的音频上会陷入字符级
 import os
 import re
 import sys
+sys.stdout.reconfigure(encoding="utf-8")
 import json
 import glob
 import argparse
