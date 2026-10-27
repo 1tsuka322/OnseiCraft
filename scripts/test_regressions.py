@@ -1401,11 +1401,19 @@ def main():
             m = re.match(r"\s*(\d+)/(\d+) 通过", _l)
             if m:
                 _n_ok, _n_all = int(m.group(1)), int(m.group(2))
-        bad3n = [] if (_r.returncode == 0 and _n_ok == _n_all and _n_all > 0) \
-            else [("errata_audit", [l for l in (_r.stdout or "").splitlines() if "❌" in l][:3]
-                   or (_r.stderr or "").strip()[-200:])]
-        print("   %d/%d 通过 %s" % (_n_ok if _n_ok >= 0 else 0, _n_all if _n_all >= 0 else 0,
-                                  "✅" if not bad3n else "❌ " + str(bad3n)))
+        if "SKIP 语料断言" in (_r.stdout or ""):
+            # 语料不全（协作者的包只有一部作品）→ 只跑了结构断言，不算失败
+            SKIPPED.append(("errata_audit", "语料不全",
+                            [l.strip() for l in (_r.stdout or "").splitlines()
+                             if "SKIP" in l][:1]))
+            print("   跳过（语料不全，只跑了结构断言 %d/%d）" % (_n_ok, _n_all))
+            bad3n = []
+        else:
+            bad3n = [] if (_r.returncode == 0 and _n_ok == _n_all and _n_all > 0) \
+                else [("errata_audit", [l for l in (_r.stdout or "").splitlines() if "❌" in l][:3]
+                       or (_r.stderr or "").strip()[-200:])]
+            print("   %d/%d 通过 %s" % (_n_ok if _n_ok >= 0 else 0, _n_all if _n_all >= 0 else 0,
+                                      "✅" if not bad3n else "❌ " + str(bad3n)))
 
     print("\n=== 3o. repair_overlay 状态机（2026-10-26 T8）===")
     bad3o = check_repair_overlay(verbose)

@@ -97,16 +97,20 @@ def iter_segments():
                         yield work, track, float(s.get("start") or 0.0), t
 
 
-def gather(queries, max_samples=400):
+def gather(queries, max_samples=400, works_seen=None):
     """一遍语料，统计一组查询串。返回 {q: {hits, works, cf, samples}}。
 
     · 先按 (work, track, round(start,2)) 去重（多轮 ASR 同窗多版会灌水）；
     · cf = 去重段内出现次数（写真 169 段 / 172 次的口径）；
-    · samples 留前 max_samples 条（--guard-samples 逐条看原文用，截断防炸内存）。
+    · samples 留前 max_samples 条（--guard-samples 逐条看原文用，截断防炸内存）；
+    · works_seen：传一个 set 进来，会被填成「语料里出现过的作品名」，
+      用来判断语料覆盖是否够跑数值断言（--test 用）。
     """
     stats = {q: {"hits": set(), "works": set(), "cf": 0, "samples": []} for q in queries}
     seen = set()
     for work, track, start, text in iter_segments():
+        if works_seen is not None:
+            works_seen.add(work)
         key = (work, track, round(start, 2))
         if key in seen:
             continue
@@ -187,29 +191,82 @@ def cmd_guard_samples(ja, n):
 
 
 # ---------------------------------------------------------------- --test
+FULL_WORKS = 16          # 基线语料的作品数（16 部成品）
+FULL_SEGS = 20000        # 基线去重段数（实际约 22800）
+
+
+def structure_checks(entries):
+    """**与语料无关**的结构断言：任何 clone 上都应该过。
+
+    这些查的是「表本身合不合法」——mode 取值、ctx 正则可编译、负向断言已退役、
+    没有重复键。语料不全也照样能查。
+    """
+    A = []
+    by_ja = {}
+    for e in entries:
+        by_ja.setdefault(e["ja"], []).append(e)
+
+    def chk(name, cond):
+        A.append((name, bool(cond)))
+
+    chk("每条 mode ∈ {auto,guard,review}",
+        all(e.get("mode") in ("auto", "guard", "review") for e in entries))
+    chk("没有重复的 ja（同键两条会让运行时行为不确定）",
+        all(len(v) == 1 for v in by_ja.values()))
+    chk("没有 ja == fix 的空条目", all(e["ja"] != e["fix"] for e in entries))
+
+    bad_re = []
+    for e in entries:
+        for c in (e.get("ctx") or ([e["guard"]] if e.get("guard") else [])):
+            try:
+                re.compile(c)
+            except re.error:
+                bad_re.append((e["ja"], c))
+    chk("ctx 正则全部可编译", not bad_re)
+    chk("guard 条目都有 ctx 白名单（负向断言已退役）",
+        all(e.get("ctx") or e.get("guard") for e in entries if e.get("mode") == "guard"))
+    chk("没有负向断言 (?!…)",
+        not any("(?!" in (c or "") for e in entries for c in (e.get("ctx") or [])))
+    chk("works 作用域是字符串列表",
+        all(isinstance(e["works"], list) and all(isinstance(x, str) for x in e["works"])
+            for e in entries if "works" in e))
+    return A
+
+
 def cmd_test():
     """门禁：期望值来自 2026-10-26 手工基线 + T7b 用户裁决；对不上=口径错了，别改期望值。
 
-    ⚠️ 这些期望值是**对着具体语料**数出来的（n_hits / n_works / wrong_cf）。
-    公开仓库不含语料，clone 下来必然一条都对不上 —— 所以「语料为空」时**直接跳过**，
-    报 SKIP 并返回 0。否则协作者一跑就是 16/37，会以为项目坏了。
+    ⚠️ 数值断言（n_hits / n_works / wrong_cf）是**对着完整语料**数出来的
+    （16 部成品 + 106 部学习语料）。语料不全时它们必然对不上——那不是表坏了。
+    所以按覆盖度分两级：
+      · 结构断言：永远跑；
+      · 语料断言：只有语料覆盖达到基线才跑，否则 SKIP 并说明差多少。
     """
     entries = load_errata()
     by_ja = {e["ja"]: e for e in entries}
     queries = {e["ja"] for e in entries} | {e["fix"] for e in entries}
-    stats, n_seg = gather(queries)
-    if n_seg == 0:
-        print("⚠️ SKIP：没有找到 ASR 语料（data/draft），errata 的语料断言无法执行。")
-        print("   公开仓库不含语料，这是正常状态；有语料时会跑完整 %d 条断言。"
-              % (len(entries) * 3))
-        return 0
+    ws = set()
+    stats, n_seg = gather(queries, works_seen=ws)
+
+    A = structure_checks(entries)
+    full = len(ws) >= FULL_WORKS and n_seg >= FULL_SEGS
+    if not full:
+        n_pass = sum(1 for _, ok in A if ok)
+        for name, ok in A:
+            if not ok:
+                print("  ❌ %s" % name)
+        print("%d/%d 通过（结构断言）" % (n_pass, len(A)))
+        print("⚠️ SKIP 语料断言：当前语料 %d 部 / %d 段，基线是 %d 部 / ≥%d 段。"
+              % (len(ws), n_seg, FULL_WORKS, FULL_SEGS))
+        print("   数值期望（n_hits / n_works / wrong_cf）是对着完整语料数出来的，")
+        print("   语料不全时对不上是正常的，不代表错字表坏了。")
+        sys.exit(0 if n_pass == len(A) else 1)
 
     def g(ja):
         st = stats.get(ja) or {"hits": set(), "works": set(), "cf": 0, "samples": []}
         return len(st["hits"]), len(st["works"]), st["cf"]
 
     rows = {r["ja"]: r for r in audit_rows(entries, stats)}
-    A = []   # (断言名, 是否通过)
 
     def chk(name, cond):
         A.append((name, bool(cond)))
