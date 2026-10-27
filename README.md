@@ -102,6 +102,7 @@ $P status                                                 # 所有 run 一览
 | 整体架构与设计取舍           | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | 管线用法、指纹、断点续跑、GPU 串行 | [`docs/PIPELINE.md`](docs/PIPELINE.md)         |
 | 知识表（错字/术语/允许集）格式与审批 | [`docs/KNOWLEDGE.md`](docs/KNOWLEDGE.md)       |
+| **怎么知道字幕是好的：门禁、缺陷发现、被证伪的判据** | [`docs/QUALITY.md`](docs/QUALITY.md)           |
 | 怎么参与                | [`CONTRIBUTING.md`](CONTRIBUTING.md)           |
 
 ## 许可
