@@ -677,16 +677,21 @@ def check_new_rules(verbose):
     if verbose:
         print("   从句覆盖用例 %d 条通过" % len(CLAUSE_GAP_CASES))
     # 知识库自检：zh_mood 必须覆盖 pragmatics_hints 手写表的核心项（坑 102）
-    try:
-        _gp = os.path.join(ROOT, ".workbuddy", "style", "grammar_patterns.json")
-        _zm = json.load(open(_gp, encoding="utf-8")).get("zh_mood") or {}
-        for w in ("吧？", "吗？", "不是", "肯定", "对吧", "应该"):
-            if w not in _zm:
-                bad.append(("zh_mood_missing", w, None, None))
-        if verbose:
-            print("   zh_mood 知识库 %d 项，核心 6 项齐备" % len(_zm))
-    except Exception as e:
-        bad.append(("zh_mood_load", str(e)[:40], None, None))
+    # ⚠️ 依赖风格库（.workbuddy/style/grammar_patterns.json）。公开仓库不含数据，
+    # 协作者 clone 下来必然没有 → **缺文件就跳过**，不判失败。
+    _gp = os.path.join(ROOT, ".workbuddy", "style", "grammar_patterns.json")
+    if not os.path.exists(_gp):
+        SKIPPED.append(("zh_mood", "无风格库", "grammar_patterns.json 不存在"))
+    else:
+        try:
+            _zm = json.load(open(_gp, encoding="utf-8")).get("zh_mood") or {}
+            for w in ("吧？", "吗？", "不是", "肯定", "对吧", "应该"):
+                if w not in _zm:
+                    bad.append(("zh_mood_missing", w, None, None))
+            if verbose:
+                print("   zh_mood 知识库 %d 项，核心 6 项齐备" % len(_zm))
+        except Exception as e:
+            bad.append(("zh_mood_load", str(e)[:40], None, None))
     # ---- 呼称人称反转（2026-10-21，坑 84）----
     for ja, zh, want, note in PERSON_FLIP_CASES:
         got = person_flip(ja, zh)
@@ -1393,6 +1398,12 @@ def main():
           and not bad3c and not bad3d and not bad3d2 and not bad3e and not bad3e2
           and not bad3f and not bad3g and not bad3h and not bad3i and not bad3k and not bad3l
           and not bad3m and not bad3n and not bad3o)
+    if SKIPPED:
+        print("\n跳过 %d 项（缺数据，公开仓库 clone 下来的正常状态）：" % len(SKIPPED))
+        for s in SKIPPED[:5]:
+            print("   - %s / %s（%s）" % (s[0], s[1], s[2]))
+        if len(SKIPPED) > 5:
+            print("   … 其余 %d 项同类" % (len(SKIPPED) - 5))
     print("\n结果：%s" % ("✅ 门禁全过" if ok else "⚠️ 门禁未过"))
     return 0 if ok else 1
 
