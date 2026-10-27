@@ -26,7 +26,7 @@ import numpy as np
 import re
 
 MODEL_ID = "speechbrain/spkrec-ecapa-voxceleb"
-SAVEDIR = os.environ.get("SPK_MODEL_DIR", r"$KIKOERU_ROOT\.workbuddy\models\spkrec-ecapa")
+SAVEDIR = os.environ.get("SPK_MODEL_DIR", r"$KIKOERU_ROOT\data\models\spkrec-ecapa")
 # 声纹模型从 HF 拉，国内直连常失败；提前设好镜像
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 

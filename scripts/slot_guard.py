@@ -179,7 +179,7 @@ def scan_dir(asr_dir, init_dir, polished_dir, gloss=None):
     """扫描三个目录，返回可疑行（供 run_all 复用；main 只是它的 CLI 外壳）。"""
     if gloss is None:
         gloss = []
-        gp = os.path.join(ROOT, ".workbuddy/style/glossary.json")
+        gp = os.path.join(ROOT, "data/style/glossary.json")
         if os.path.exists(gp):
             g = json.load(open(gp, encoding="utf-8"))
             for k, v in g.items():
@@ -226,7 +226,7 @@ def main():
     ap.add_argument("asr_dir")
     ap.add_argument("init_dir")
     ap.add_argument("polished_dir")
-    ap.add_argument("--glossary", default=os.path.join(ROOT, ".workbuddy/style/glossary.json"))
+    ap.add_argument("--glossary", default=os.path.join(ROOT, "data/style/glossary.json"))
     ap.add_argument("--report", default=None)
     ap.add_argument("--revert-to", default=None, help="把槽位变化的行回退成初译，写这个目录")
     a = ap.parse_args()

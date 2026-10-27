@@ -13,7 +13,7 @@ r"""语法/语气模式挖掘 v1（2026-10-22，learningskill 第三条通道）
 判据纪律（同 mine_terms）：
   · 全部基于 **janome/UniDic 词性**，不靠正则猜；
   · 必须**跨作品稳定**（≥N 部作品）才收录，单作品高频的不收（角色口癖不算语法）；
-  · 每条带 hit / works 计数，写进 `.workbuddy/style/grammar_patterns.json`；
+  · 每条带 hit / works 计数，写进 `data/style/grammar_patterns.json`；
   · ⚠️ 产出的列表**不是终态**：要接一门禁（`test_regressions.py` 的 QNEG_CASES）
     确认并入后不把已知正例判错，才允许 scan_violations 使用。
 
@@ -31,8 +31,8 @@ from struct import unpack
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
-DEFAULT_LIB = os.path.join(ROOT, ".workbuddy", "tmp", "seg_lib")
-DEFAULT_OUT = os.path.join(ROOT, ".workbuddy", "style", "grammar_patterns.json")
+DEFAULT_LIB = os.path.join(ROOT, "data", "tmp", "seg_lib")
+DEFAULT_OUT = os.path.join(ROOT, "data", "style", "grammar_patterns.json")
 
 from janome.tokenizer import Tokenizer  # noqa: E402
 
@@ -102,7 +102,7 @@ def pos_detail(t):
     return t.part_of_speech.split(",")
 
 
-ASR_ROOT = os.path.join(ROOT, ".workbuddy", "draft")
+ASR_ROOT = os.path.join(ROOT, "data", "draft")
 
 
 def load_pairs(libdir):
@@ -314,7 +314,7 @@ def gap_report(data):
     手写列表是这几轮逐条核验出来的，不一定错；但语料挖不到 → 说明它罕见，
     要么补语料、要么接受「只能靠人记」。写进产出，让缺口显式化。
     """
-    sys.path.insert(0, os.path.join(ROOT, ".workbuddy", "skills",
+    sys.path.insert(0, os.path.join(ROOT, "data", "skills",
                                     "kikoeru-subtitle", "scripts"))
     try:
         import scan_violations as SV

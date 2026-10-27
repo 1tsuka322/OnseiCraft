@@ -33,7 +33,7 @@ from scan_violations import (leak_rules, norm, omit_ratio, onomat_translit,  # n
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 可用 KIKOERU_LRC_ROOT 指向别的成品目录（例如 cue 管线的试点输出）
 OUT_ROOT = os.environ.get("KIKOERU_LRC_ROOT", os.path.join(ROOT, "kikoerusubtitle"))
-ASR_ROOT = os.path.join(ROOT, ".workbuddy/draft")
+ASR_ROOT = os.path.join(ROOT, "data/draft")
 
 # —— 数据依赖用例（PILOT_TRACKS / KNOWN_LEAKS）需要具体作品的成品目录。
 # 公开仓库**不含数据**，作品号也已脱敏成 RJ9xxxxx；真实 ID 的映射放在
@@ -677,9 +677,9 @@ def check_new_rules(verbose):
     if verbose:
         print("   从句覆盖用例 %d 条通过" % len(CLAUSE_GAP_CASES))
     # 知识库自检：zh_mood 必须覆盖 pragmatics_hints 手写表的核心项（坑 102）
-    # ⚠️ 依赖风格库（.workbuddy/style/grammar_patterns.json）。公开仓库不含数据，
+    # ⚠️ 依赖风格库（data/style/grammar_patterns.json）。公开仓库不含数据，
     # 协作者 clone 下来必然没有 → **缺文件就跳过**，不判失败。
-    _gp = os.path.join(ROOT, ".workbuddy", "style", "grammar_patterns.json")
+    _gp = os.path.join(ROOT, "data", "style", "grammar_patterns.json")
     if not os.path.exists(_gp):
         SKIPPED.append(("zh_mood", "无风格库", "grammar_patterns.json 不存在"))
     else:
@@ -1371,9 +1371,9 @@ def main():
     # 「N/N 通过」即失败；失败断言名由 errata_audit 自己打到 stdout，转贴前几条。
     import subprocess
     _ea = os.path.join(os.path.dirname(os.path.abspath(__file__)), "errata_audit.py")
-    # ⚠️ 依赖错字表（.workbuddy/style/asr_errata.json）。公开仓库不含数据 →
+    # ⚠️ 依赖错字表（data/style/asr_errata.json）。公开仓库不含数据 →
     # 表不存在就**跳过**，不判失败（否则协作者 clone 下来一片红）。
-    _et = os.path.join(ROOT, ".workbuddy", "style", "asr_errata.json")
+    _et = os.path.join(ROOT, "data", "style", "asr_errata.json")
     if not os.path.exists(_et):
         SKIPPED.append(("errata_audit", "无错字表", "asr_errata.json 不存在"))
         print("   跳过（无错字表）")

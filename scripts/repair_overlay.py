@@ -8,7 +8,7 @@
 
 ## 数据结构
 
-`.workbuddy/repair_overlay/<RJ>.json`：
+`data/repair_overlay/<RJ>.json`：
 
 ```json
 {"rj": "RJ9000010",
@@ -37,7 +37,7 @@
 ## 用法
 
 ```bash
-PY="C:/Users/zyk/.workbuddy/binaries/python/envs/default/Scripts/python.exe"
+PY="C:/Users/zyk/data/binaries/python/envs/default/Scripts/python.exe"
 "$PY" scripts/repair_overlay.py --list RJ9000010        # 看该作品的覆盖层
 "$PY" scripts/repair_overlay.py --pending               # 全部待听条目（跨作品）
 "$PY" scripts/repair_overlay.py --check                 # 时间轴 + confirmed 锁校验
@@ -52,7 +52,7 @@ PY="C:/Users/zyk/.workbuddy/binaries/python/envs/default/Scripts/python.exe"
 
 `--add` 只认 plan 里的 `original_zh`。R132 有几条 plan 没带，导致条目**没有「改之前」的文本**，
 `--reject` 直接不可用（听完了想说「原译更好」却回滚不了）。`--fill-original` 从
-`.workbuddy/tmp/lrc_backup_fixline/<rj>/<轨>.<时间戳>.lrc` 取**最早**一份该时间戳的文本回填。
+`data/tmp/lrc_backup_fixline/<rj>/<轨>.<时间戳>.lrc` 取**最早**一份该时间戳的文本回填。
 
 ⚠️ 口径限制：取的是**最早**备份，如果该行在本次修改之前已被别的批次改过，那它不是「紧邻上一版」。
 所以回填只补空值、不覆盖已有值，并在 `original_zh_src` 里记来源文件名备查。
@@ -65,10 +65,10 @@ import re
 import sys
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OVL = os.path.join(ROOT, ".workbuddy/repair_overlay")
+OVL = os.path.join(ROOT, "data/repair_overlay")
 LRC = os.path.join(ROOT, "kikoerusubtitle")
-LOCKS = os.path.join(ROOT, ".workbuddy/locks")
-BAK = os.path.join(ROOT, ".workbuddy/tmp/lrc_backup_fixline")
+LOCKS = os.path.join(ROOT, "data/locks")
+BAK = os.path.join(ROOT, "data/tmp/lrc_backup_fixline")
 sys.stdout.reconfigure(encoding="utf-8")
 
 
@@ -307,7 +307,7 @@ def show(rj=None, only_pending=False):
 def check():
     """校验两件事：
     ① t0 必须还能在原 LRC 里找到（时间轴没被重跑改过）；
-    ② T8 新增：confirmed 条目必须在 .workbuddy/locks/<rj>.json 里有对应锁——
+    ② T8 新增：confirmed 条目必须在 data/locks/<rj>.json 里有对应锁——
        锁是「重跑别冲掉人工修正」的**唯一**保障，缺锁的 confirmed 等于白确认。
     """
     bad = no_lock = 0

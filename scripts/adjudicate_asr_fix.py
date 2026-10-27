@@ -26,7 +26,7 @@ import collections
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "regset", "r112")
-DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
+DRAFT = os.path.join(ROOT, "data", "draft")
 KANJI = lambda s: any("\u4e00" <= c <= "\u9fff" for c in s)
 
 

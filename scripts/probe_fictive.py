@@ -22,7 +22,7 @@ correct 与 counter 的差 = 记忆的**因果**效应；irrelevant/none 是「�
 真能被 load_mem 渲染进 prompt、命令是否拼对」全部自证一遍，人确认了再上 GPU。
 
 用法：
-  python probe_fictive.py --dry-run --out $KIKOERU_ROOT/.workbuddy/tmp/r125
+  python probe_fictive.py --dry-run --out $KIKOERU_ROOT/data/tmp/r125
   python probe_fictive.py --run    --out ...（实际执行，会起 llama-server，慎用）
 """
 import os
@@ -36,7 +36,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
+DRAFT = os.path.join(ROOT, "data", "draft")
 PY = sys.executable
 
 # 虚构词（ja, zh_correct, zh_counter）。上 GPU 前必须全库自检 0 命中——
@@ -77,7 +77,7 @@ def fictive_selfcheck():
     大文件按块流式读（重叠 = 词长-1），避免整读 60MB 语料。
     """
     words = [w for tup in FICTIVE for w in tup]
-    targets = [os.path.join(ROOT, ".workbuddy", "style", "parallel.json")]
+    targets = [os.path.join(ROOT, "data", "style", "parallel.json")]
     targets += sorted(glob.glob(os.path.join(DRAFT, "*", "asr*", "*.json")))
     hits = {w: 0 for w in words}
     n_files = 0
@@ -145,8 +145,8 @@ def mem_snippet(arm_asr_dir, src):
 # ---------------------------------------------------------------- 主流程
 def main():
     ap = argparse.ArgumentParser(description="虚构术语四臂探针（默认只做准备与自证）")
-    ap.add_argument("--out", default=os.path.join(ROOT, ".workbuddy", "tmp", "r125"),
-                    help="中间产物根目录（默认 .workbuddy/tmp/r125）")
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "tmp", "r125"),
+                    help="中间产物根目录（默认 data/tmp/r125）")
     ap.add_argument("--dry-run", action="store_true", help="只做自检/换词/写副本/打印命令，不调 LLM")
     ap.add_argument("--run", action="store_true", help="真正执行（起 llama-server，GPU，慎用）")
     a = ap.parse_args()

@@ -32,7 +32,7 @@ import subprocess
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", "..", "..", ".."))
-TMP = os.path.join(ROOT, ".workbuddy", "tmp")
+TMP = os.path.join(ROOT, "data", "tmp")
 sys.path.insert(0, TMP)
 
 SCRIPT_WORD = re.compile(r"台本|セリフ|せりふ|script|シナリオ", re.I)
@@ -109,7 +109,7 @@ def main():
     #    后面 script_align 找不到 ASR（实测 2026-10-19）。
     rj = "RJ%d" % wid
 
-    draft_root = a.draft_root or os.path.join(ROOT, ".workbuddy", "draft")
+    draft_root = a.draft_root or os.path.join(ROOT, "data", "draft")
     out_dir = os.path.join(draft_root, rj, "script")
     os.makedirs(out_dir, exist_ok=True)
 

@@ -10,7 +10,7 @@ r"""
   python run_all.py "$KIKOERU_ROOT/RJ1401520/xxx/02_mp3" \
                     "$KIKOERU_ROOT/kikoerusubtitle/RJ1401520" RJ1401520 --ext mp3
 
-产出（默认 $KIKOERU_ROOT/.workbuddy/style）：
+产出（默认 $KIKOERU_ROOT/data/style）：
   parallel.json / stats.json / hard_rules.txt / style_guide.txt
 多次运行会累积语料，作品越多风格拟合越准。
 """
@@ -23,7 +23,7 @@ import subprocess
 PY = sys.executable
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get("KIKOERU_ROOT", r"$KIKOERU_ROOT")
-DEFAULT_STYLE = os.path.join(ROOT, ".workbuddy", "style")
+DEFAULT_STYLE = os.path.join(ROOT, "data", "style")
 
 
 def run(args, title):
@@ -51,7 +51,7 @@ def main():
     ap.add_argument("--compute", default="float16")
     a = ap.parse_args()
 
-    asr_dir = os.path.join(ROOT, ".workbuddy", "draft", a.name, "asr")
+    asr_dir = os.path.join(ROOT, "data", "draft", a.name, "asr")
     os.makedirs(asr_dir, exist_ok=True)
     os.makedirs(a.style, exist_ok=True)
 

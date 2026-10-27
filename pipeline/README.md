@@ -25,7 +25,7 @@ pipeline/
 ## 快速开始
 
 ```bash
-PY="C:/Users/zyk/.workbuddy/binaries/python/envs/default/Scripts/python.exe"
+PY="C:/Users/zyk/data/binaries/python/envs/default/Scripts/python.exe"
 cd $KIKOERU_ROOT
 
 "$PY" pipeline/pipeline.py version          # 看版本

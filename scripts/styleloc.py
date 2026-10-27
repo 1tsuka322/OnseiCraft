@@ -4,7 +4,7 @@
 公开仓库不含数据，所以这里有一层**回落**：
 
 1. `KIKOERU_STYLE` 环境变量（最高优先，管线会显式传）
-2. `<repo>/.workbuddy/style` —— 维护者的真实风格库（含平行语料，不入库）
+2. `<repo>/data/style` —— 维护者的真实风格库（含平行语料，不入库）
 3. `<repo>/presets` —— **公开预设**：clone 下来就有，含规则/词典/合成样例
 
 这样同一份代码在「有私有语料」和「刚 clone 下来」两种环境下都能跑，
@@ -21,7 +21,7 @@ def style_dir():
     env = os.environ.get("KIKOERU_STYLE")
     if env:
         return env
-    real = os.path.join(ROOT, ".workbuddy", "style")
+    real = os.path.join(ROOT, "data", "style")
     if os.path.isdir(real):
         return real
     return os.path.join(ROOT, "presets")

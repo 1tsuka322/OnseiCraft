@@ -7,7 +7,7 @@ whisper large-v3 encoder（1280 维均值池化）+ 2 层 MLP，用 A8 遮蔽器
 
 **它不是什么（重要）**：**不能当自动遮蔽开关**。高阈值端仍有 ~1.7% 误报（breathy 台词
 被判成气声），本项目铁律是「宁可漏判不可误判」→ 默认只产出**按分数排序的试听清单**，
-由人决定。要真正自动化，需要人工标签（`.workbuddy/tmp/label_pack/`）再训。
+由人决定。要真正自动化，需要人工标签（`data/tmp/label_pack/`）再训。
 
 用法：
   python nonlex_score.py --rj RJ9000004              # 单作品 → 试听清单
@@ -17,10 +17,10 @@ whisper large-v3 encoder（1280 维均值池化）+ 2 层 MLP，用 A8 遮蔽器
   python nonlex_score.py --rj RJ9000004 --c3            # 用 C3 五头模型（moan/breath 排序，2026-10-21）
 
 输出：
-  .workbuddy/tmp/nonlex_review/<rj>.md    按分数排序的试听清单（含 ja/时间/时长/A8 组）
-  .workbuddy/tmp/nonlex_review/<rj>.json  逐段分数（供程序消费）
+  data/tmp/nonlex_review/<rj>.md    按分数排序的试听清单（含 ja/时间/时长/A8 组）
+  data/tmp/nonlex_review/<rj>.json  逐段分数（供程序消费）
 
-依赖：GPU（whisper encoder）+ 本地 large-v3；模型权重 `.workbuddy/models/nonlex_detector.json`。
+依赖：GPU（whisper encoder）+ 本地 large-v3；模型权重 `data/models/nonlex_detector.json`。
 """
 import os
 import re
@@ -32,14 +32,14 @@ import argparse
 import numpy as np
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SCRIPTS = os.path.join(ROOT, ".workbuddy", "skills", "kikoeru-subtitle", "scripts")
-MODEL = os.path.join(ROOT, ".workbuddy", "models", "nonlex_detector.json")
-C3_DIR = os.path.join(ROOT, ".workbuddy", "tmp", "c3_model")   # 五头模型（c3_train.py 产出）
-C3_SCRIPTS = os.path.join(ROOT, ".workbuddy", "tmp", "daily")
+SCRIPTS = os.path.join(ROOT, "data", "skills", "kikoeru-subtitle", "scripts")
+MODEL = os.path.join(ROOT, "data", "models", "nonlex_detector.json")
+C3_DIR = os.path.join(ROOT, "data", "tmp", "c3_model")   # 五头模型（c3_train.py 产出）
+C3_SCRIPTS = os.path.join(ROOT, "data", "tmp", "daily")
 if C3_SCRIPTS not in sys.path:
     sys.path.insert(0, C3_SCRIPTS)
 LARGE = r"D:\fasterwhisperGUI-0.8.5.sfx\models\faster-whisper-large-v3"
-OUTDIR = os.path.join(ROOT, ".workbuddy", "tmp", "nonlex_review")
+OUTDIR = os.path.join(ROOT, "data", "tmp", "nonlex_review")
 SR = 16000
 
 
@@ -80,12 +80,12 @@ def c3_score(rj, thr, only_unknown, top):
         if os.path.exists(p):
             heads[h] = joblib.load(p)
     if "moan" not in heads:
-        sys.exit("缺 C3 模型：先跑 .workbuddy/tmp/daily/c3_train.py")
+        sys.exit("缺 C3 模型：先跑 data/tmp/daily/c3_train.py")
 
     wm = WhisperModel(LARGE, device="cuda", compute_type="float16")
     fe = FeatureExtractor(feature_size=128)
     amap = F3.audio_map(rj)
-    asr_dir = os.path.join(ROOT, ".workbuddy", "draft", rj, "asr")
+    asr_dir = os.path.join(ROOT, "data", "draft", rj, "asr")
 
     def _decode_track(path):
         """整轨解码一次（16k stereo fltp）——2026-10-24 修：原实现每段重开文件解码，
@@ -193,7 +193,7 @@ def main():
         sys.exit("需要 --rj RJxxxxxxx 或 --all")
     if a.c3:
         for rj in ([a.rj] if a.rj else sorted(os.listdir(os.path.join(
-                ROOT, ".workbuddy", "draft")))):
+                ROOT, "data", "draft")))):
             if not rj.startswith("RJ"):
                 continue
             c3_score(rj, a.thr, a.only_unknown, a.top)
@@ -239,11 +239,11 @@ def main():
 
     works = [a.rj] if a.rj else sorted(
         os.path.basename(os.path.dirname(os.path.dirname(p)))
-        for p in glob.glob(os.path.join(ROOT, ".workbuddy", "draft", "*", "asr", "*.json")))
+        for p in glob.glob(os.path.join(ROOT, "data", "draft", "*", "asr", "*.json")))
     works = sorted(set(works))
     os.makedirs(OUTDIR, exist_ok=True)
     for rj in works:
-        js = sorted(glob.glob(os.path.join(ROOT, ".workbuddy", "draft", rj, "asr", "*.json")))
+        js = sorted(glob.glob(os.path.join(ROOT, "data", "draft", rj, "asr", "*.json")))
         if not js:
             continue
         if a.max_tracks:

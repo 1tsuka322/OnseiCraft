@@ -24,7 +24,7 @@ import time
 import shutil
 import argparse
 
-SCRIPTS = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "skills", "kikoeru-subtitle", "scripts")
+SCRIPTS = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "skills", "kikoeru-subtitle", "scripts")
 sys.path.insert(0, SCRIPTS)
 import asr as A                                   # noqa: E402
 from faster_whisper import WhisperModel           # noqa: E402
@@ -86,7 +86,7 @@ def main():
     ap.add_argument("--apply", action="store_true")
     a = ap.parse_args()
 
-    jp = os.path.join(ROOT, ".workbuddy", "draft", a.rj, "asr", a.track + ".json")
+    jp = os.path.join(ROOT, "data", "draft", a.rj, "asr", a.track + ".json")
     if not os.path.exists(jp):
         sys.exit("找不到 ASR：%s" % jp)
     d = load_json(jp)
@@ -142,7 +142,7 @@ def main():
         return
 
     # 备份 + 替换
-    bakdir = os.path.join(ROOT, ".workbuddy", "draft", a.rj, "asr_bak")
+    bakdir = os.path.join(ROOT, "data", "draft", a.rj, "asr_bak")
     os.makedirs(bakdir, exist_ok=True)
     bak = os.path.join(bakdir, "%s.%s.json" % (a.track, time.strftime("%Y%m%d_%H%M%S")))
     shutil.copy2(jp, bak)
@@ -156,7 +156,7 @@ def main():
     print("\n已替换：%s（备份 %s）" % (jp, os.path.basename(bak)))
 
     # 供补回成品：只含新段的 asr_rec
-    recdir = os.path.join(ROOT, ".workbuddy", "draft", a.rj, "asr_rec")
+    recdir = os.path.join(ROOT, "data", "draft", a.rj, "asr_rec")
     os.makedirs(recdir, exist_ok=True)
     rp = os.path.join(recdir, a.track + ".json")
     r = dict(d)
@@ -166,9 +166,9 @@ def main():
     print("已写 asr_rec：%s" % rp)
     print("\n下一步（把新译文补回成品）：")
     print("  1) python serve.py start")
-    print("  2) python translate.py %s %s" % (recdir, os.path.join(ROOT, ".workbuddy", "draft", a.rj, "draft_rec")))
+    print("  2) python translate.py %s %s" % (recdir, os.path.join(ROOT, "data", "draft", a.rj, "draft_rec")))
     print("  3) python polish.py %s %s %s" % (recdir,
-          os.path.join(ROOT, ".workbuddy", "draft", a.rj, "draft_rec"),
+          os.path.join(ROOT, "data", "draft", a.rj, "draft_rec"),
           os.path.join(ROOT, "kikoerusubtitle_rec", a.rj)))
     print("  4) python recover_splice.py splice --work %s --apply" % a.rj)
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 r"""开头补扫：修 Whisper「首个 30 秒窗被整窗丢弃」导致的开头丢词。
 
-背景（2026-10-13 定位，实测脚本在 .workbuddy/tmp/daily/test_*.py）：
+背景（2026-10-13 定位，实测脚本在 data/tmp/daily/test_*.py）：
   asr.py 走整轨 model.transcribe()，Whisper 内部按 **30 秒滑窗**切分。
   当第 1 个窗（0-30s）的开头是低能量的慢起句时，模型会把这半窗判成
   低置信度并**整段跳过或编造套话**——音频完好、音量也够（增益实测无效），
@@ -25,11 +25,11 @@ r"""开头补扫：修 Whisper「首个 30 秒窗被整窗丢弃」导致的开�
 用法：
   python rescan_head.py <ASR目录> <音频目录> [扩展名] [--head 60] [--dry]
 
-  python rescan_head.py "$KIKOERU_ROOT/.workbuddy/draft/RJ9000002/asr" \
+  python rescan_head.py "$KIKOERU_ROOT/data/draft/RJ9000002/asr" \
       "$KIKOERU_ROOT/RJ9000002/mp3" mp3
 
   --dry 只报告需要补扫的轨，不写盘。
-  逐窗原始结果缓存在 .workbuddy/tmp/rescan_head/out，可断点续跑。
+  逐窗原始结果缓存在 data/tmp/rescan_head/out，可断点续跑。
 """
 import os
 import sys

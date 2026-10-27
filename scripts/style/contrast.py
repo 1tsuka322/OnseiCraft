@@ -12,7 +12,7 @@ r"""
   3. 逐句算与人工译文的字面差异，挑差异最大的当典型样本
   4. 交给大模型归纳"机器译法的通病"，写成可执行的修正规则
 
-产出（$KIKOERU_ROOT/.workbuddy/style）：
+产出（$KIKOERU_ROOT/data/style）：
   mt_vs_human.txt   对照样本 + 归纳出的通病清单（给人看）
   并把结论追加进 hard_rules.txt（给模型看）
 

@@ -36,7 +36,7 @@ PERSON = re.compile(r"(私|僕|俺|あたし|わたし|わたくし|あなた|�
 
 
 def load_glossary():
-    p = os.path.join(ROOT, ".workbuddy/style/glossary.json")
+    p = os.path.join(ROOT, "data/style/glossary.json")
     out = []
     if os.path.exists(p):
         g = json.load(open(p, encoding="utf-8"))
@@ -47,7 +47,7 @@ def load_glossary():
 
 
 def load_errata():
-    p = os.path.join(ROOT, ".workbuddy/style/asr_errata.json")
+    p = os.path.join(ROOT, "data/style/asr_errata.json")
     return [e["ja"] for e in json.load(open(p, encoding="utf-8"))["entries"]] \
         if os.path.exists(p) else []
 

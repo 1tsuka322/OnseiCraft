@@ -9,7 +9,7 @@
      `时间 / 日文 / 当前译文 / 可疑标记`，可就地改、可勾「锁定」、可筛选可疑行；
      点「导出 patch.json」。
   2. `review.py --rj RJxxxx --apply patch.json` → 把改动写回成品 LRC，
-     并把「锁定」的行记进 `.workbuddy/locks/<rj>.json`。
+     并把「锁定」的行记进 `data/locks/<rj>.json`。
      **polish 之后会按锁覆盖**（见 polish.py 的 locks 逻辑），重跑不再冲掉人工修正。
 
 用法：
@@ -26,8 +26,8 @@ import datetime
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROD = os.path.join(ROOT, "kikoerusubtitle")
-DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
-LOCKS = os.path.join(ROOT, ".workbuddy", "locks")
+DRAFT = os.path.join(ROOT, "data", "draft")
+LOCKS = os.path.join(ROOT, "data", "locks")
 TS = re.compile(r"^\[(\d+):([\d.]+)\](.*)$")
 KANA = re.compile(r"[\u3040-\u30ff]")
 PUNCT_ONLY = re.compile(r"^[\s…‥・.．,，、。！？!?~～\-—–♪♡♥☆★（）()\[\]「」『』\"'“”‘’]+$")
@@ -244,7 +244,7 @@ def main():
     rows = rows_of(a.rj)
     if not rows:
         sys.exit("没读到成品 LRC：%s" % os.path.join(PROD, a.rj))
-    outdir = a.out or os.path.join(ROOT, ".workbuddy", "tmp", "review")
+    outdir = a.out or os.path.join(ROOT, "data", "tmp", "review")
     os.makedirs(outdir, exist_ok=True)
     html = (HTML.replace("__RJ__", a.rj)
                 .replace("__DATA__", json.dumps(rows, ensure_ascii=False))

@@ -144,7 +144,7 @@ check.py 全部通过 · run ✅
 
 - 现象：`repair --target run` 改的是 `04_polish`，下一次 `run --force` 重跑润色就**被模型输出冲掉**
   （实测 4 行修好的内容全回来了，`check.py` 再次报日文残留/半角）。
-- 修法：`repair --lock` —— 把修好的行连同**日文**写进 `.workbuddy/locks/<RJ>.json`。
+- 修法：`repair --lock` —— 把修好的行连同**日文**写进 `data/locks/<RJ>.json`。
   锁在 `apply_lock` 里逐字覆写，于是重跑也能复现人工决定。
 - 实测：加锁后再 `--force` 重跑，4 行**全部保留**，门禁全过。
 

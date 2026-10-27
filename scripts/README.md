@@ -63,7 +63,7 @@ asmr.one 上部分作品带台本（`type=='other'` 的 PDF、`type=='text'` 的
 ```bash
 # ① 检测 + 下载 + 提取（传 RJ 号即可）
 python fetch_script.py 1715662
-#    → .workbuddy/draft/RJ1715662/script/*.txt
+#    → data/draft/RJ1715662/script/*.txt
 #    返回 0 = 有台本；返回 1 = 没有，走正常 ASR 流程
 
 # ② 单独提取竖排 PDF
@@ -149,7 +149,7 @@ python asr_fix_scan.py --rj RJ9000006 --track "01 xxx.mp3" \
 
 ### asr_fix_scan.py 的 errata 自动替换（`auto_apply_errata`，2026-10-26 R133 改造）
 
-`.workbuddy/style/asr_errata.json` 是**已核实的 ASR 错字表**，`run_all.py` 在 asr 之后
+`data/style/asr_errata.json` 是**已核实的 ASR 错字表**，`run_all.py` 在 asr 之后
 自动跑一次（写 `draft/<rj>/asr_fix/`，不覆盖 `asr/`）。**不调模型，纯确定性替换。**
 
 | 字段 | 作用 |
@@ -579,7 +579,7 @@ python fixline.py ... --start 469.6 --apply                               # 落�
 - **只改文本不动时间戳**；走正式管线同一套函数（`translate_block` + `polish_block`，
   A8 遮蔽/术语策略/实体账本/归属 hint 全部继承），不是另写一套 prompt。
 - 落盘前必过：无日文残留 / 非空 / 非拒答 / 非纯标点 / `bad_cell`；备份在
-  `.workbuddy/tmp/lrc_backup_fixline/<rj>/<文件>.<时间戳>.lrc`。
+  `data/tmp/lrc_backup_fixline/<rj>/<文件>.<时间戳>.lrc`。
 - 新译文过长 → 就地拆成多行（时间按字数分配；窗口 <0.8s 不拆，宁可贵着）。
 - `--lrc/--asr` 可直连文件路径（在副本上验证写盘路径而不动成品）。
 - ⚠️ **ASR 版本自适应**（2026-10-22，坑 90）：`find_asr` 按 LRC 时间戳匹配率在
@@ -616,8 +616,8 @@ python nonlex_score.py --rj RJ9000016 --thr 0.9       # 只列 ≥0.9
   跨作品 **AUC 0.918**（通用 NonverbalVocalization 数据只有 0.543）。
 - **只产清单、不做决策**：高阈值端仍有 ~1.7% 误报（breathy 台词被判气声），
   清单头部约 8/10 正确 → 用途是「先听哪几条」，不是自动遮蔽。
-- 输出 `.workbuddy/tmp/nonlex_review/<rj>.md`（按分数排序，含 ja/时间/时长/A8 组）+ 同名 json。
-- 需要 GPU + 本地 large-v3；权重 `.workbuddy/models/nonlex_detector.json`。
+- 输出 `data/tmp/nonlex_review/<rj>.md`（按分数排序，含 ja/时间/时长/A8 组）+ 同名 json。
+- 需要 GPU + 本地 large-v3；权重 `data/models/nonlex_detector.json`。
 - 训练：`tmp/daily/train_domain_detector.py --feat whisper --model mlp`（按作品切分）。
 
 ### review.py —— 句级审阅页 + 锁定（2026-10-21，E1）
@@ -625,9 +625,9 @@ python nonlex_score.py --rj RJ9000016 --thr 0.9       # 只列 ≥0.9
 python review.py --rj RJ9000014                    # 生成审阅页（表格：时间/日文/中文/可疑标记）
 python review.py --rj RJ9000014 --apply patch.json # 写回改动 + 把锁定行记入 locks
 ```
-- 生成 `.workbuddy/tmp/review/<RJ>.html`：可就地改译文、勾「锁定」、只看可疑/已锁，
+- 生成 `data/tmp/review/<RJ>.html`：可就地改译文、勾「锁定」、只看可疑/已锁，
   导出 `patch.json`。可疑标记：空行/纯标点/日文残留/长行/重复上行/未对齐/人称可疑。
-- **锁定 = 人工修正不被批量重跑冲掉**：`--apply` 写 `.workbuddy/locks/<RJ>.json`
+- **锁定 = 人工修正不被批量重跑冲掉**：`--apply` 写 `data/locks/<RJ>.json`
   （key = `文件.lrc|时间戳`，值 = `{zh, old}`）。**polish 写 LRC 前按锁覆写**
   （key 命中；ts 漂移时按 `old` 原文认领）。`KIKOERU_NO_LOCKS=1` 可关。
 - 与 `fixline.py` 分工：fixline 改一处错译（带上下文重译、只改文本不动轴）；
@@ -635,7 +635,7 @@ python review.py --rj RJ9000014 --apply patch.json # 写回改动 + 把锁定行
 
 ### polish.py 的 E2 cue 级缓存（2026-10-21）
 
-`polish.py` 默认按**签名**跳过未变的 cue（`.workbuddy/cache/polish_sig/<作品>.json`）：
+`polish.py` 默认按**签名**跳过未变的 cue（`data/cache/polish_sig/<作品>.json`）：
 
 - 签名 = 轨名 + ja + 起止时间 + 该条初译 + 模型 + `CHUNK`/`MASK`/`review`/`system_mode`
   + **system prompt 哈希**——任一项变化自动失效，不会用到旧译文。
@@ -680,11 +680,11 @@ python repair_overlay.py --confirm t09-0312        # 听辨通过 → confirmed�
 python repair_overlay.py --reject  t09-0312        # 原译更好 → 经 fixline 回滚 original_zh
 ```
 
-- 数据在 `.workbuddy/repair_overlay/<RJ>.json`，每条含
+- 数据在 `data/repair_overlay/<RJ>.json`，每条含
   `original_ja / proposed_ja / original_zh / proposed_zh / audio_range / evidence / confidence / status`。
 - ⚠️ `pending_listen` = **已改进成品但没听**，写文档时不许说成「已核实」。
 - `--fill-original`（2026-10-26 新增）：`--add` 只认 plan 里的 `original_zh`，漏带就没法 `--reject`
-  （R132 有 3 条这样）。该开关从 `.workbuddy/tmp/lrc_backup_fixline/` 取**最早**一份回填，
+  （R132 有 3 条这样）。该开关从 `data/tmp/lrc_backup_fixline/` 取**最早**一份回填，
   只补空值、来源记进 `original_zh_src`；若该行此前已被别的批次改过，「最早」不等于「紧邻上一版」。
 - 听辨材料用 `tmp/daily/make_pending_listen_pack.py` 生成（切音频窗 + 日文/新旧译对照 + index.html），
   产物在 `listen_pending_1026/`。

@@ -8,7 +8,7 @@ import build_library as B  # noqa: E402
 import align_style as A  # noqa: E402
 
 CORPUS = r"$KIKOERU_ROOT\learning"
-ASR_ROOT = r"$KIKOERU_ROOT\.workbuddy\draft\learning"
+ASR_ROOT = r"$KIKOERU_ROOT\data\draft\learning"
 
 rows = []
 for w in sorted(os.listdir(CORPUS)):

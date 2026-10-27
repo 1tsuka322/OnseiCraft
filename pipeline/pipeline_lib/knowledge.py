@@ -602,7 +602,7 @@ def _post_check(fn, path=None):
         probs = _errata_self_check(src)
         if probs:
             return False, "表结构自检未过：" + "; ".join(probs[:6])
-        default_style = os.path.join(paths.ROOT, ".workbuddy", "style")
+        default_style = os.path.join(paths.ROOT, "data", "style")
         # 只有「生产表 + 未重定向」时才跑全库 errata_audit（它把 ROOT 写死）
         if os.path.abspath(src) != os.path.abspath(
                 os.path.join(default_style, fn)):

@@ -1,6 +1,6 @@
 {
   "_note": "管线配置。改这里而不是改代码；每份 manifest 会记录实际生效的配置。",
-  "python": "C:/Users/zyk/.workbuddy/binaries/python/envs/default/Scripts/python.exe",
+  "python": "C:/Users/zyk/data/binaries/python/envs/default/Scripts/python.exe",
   "device": "cuda",
   "compute": "float16",
   "ext": "auto",

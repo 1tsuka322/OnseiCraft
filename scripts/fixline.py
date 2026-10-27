@@ -14,7 +14,7 @@
   python fixline.py ... --start 469.6 --ja "どうでもいいんじゃないから"
   # 2) 你自己已经知道正确译文 → 直接写（仍过校验：日文残留/空行/清屏行）
   python fixline.py ... --start 469.6 --zh "怎么样都无所谓。"
-  # 3) 落盘（自动备份到 .workbuddy/tmp/lrc_backup_fixline/）
+  # 3) 落盘（自动备份到 data/tmp/lrc_backup_fixline/）
   python fixline.py ... --start 469.6 --apply
 
 设计口径：
@@ -23,7 +23,7 @@
   · 重译走与正式管线**同一套**函数：translate_block → polish_block
     （A8 遮蔽 / 术语策略 / 实体账本 / 归属 hint 全部继承），不是另写一套 prompt。
   · 落盘前必过：无日文残留、非空、非 REFUSE、非纯标点、时间轴单调、长行检查。
-  · 备份在 .workbuddy/tmp/lrc_backup_fixline/<rj>/<文件>.<时间戳>.lrc，可整体回滚。
+  · 备份在 data/tmp/lrc_backup_fixline/<rj>/<文件>.<时间戳>.lrc，可整体回滚。
 """
 import os
 import re
@@ -34,13 +34,13 @@ import time
 import shutil
 import argparse
 
-SCRIPTS = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "skills", "kikoeru-subtitle", "scripts")
+SCRIPTS = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "skills", "kikoeru-subtitle", "scripts")
 sys.path.insert(0, SCRIPTS)
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
+DRAFT = os.path.join(ROOT, "data", "draft")
 PROD = os.path.join(ROOT, "kikoerusubtitle")
-BAK = os.path.join(ROOT, ".workbuddy", "tmp", "lrc_backup_fixline")
+BAK = os.path.join(ROOT, "data", "tmp", "lrc_backup_fixline")
 TS_RE = re.compile(r"^\[(\d+):([\d.]+)\](.*)$")
 
 

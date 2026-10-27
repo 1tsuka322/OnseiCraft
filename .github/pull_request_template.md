@@ -28,7 +28,7 @@ python -m compileall -q pipeline scripts
 
 - [ ] `selftest` 全过
 - [ ] 新增/修改的脚本带自检，且自检输出贴在上面
-- [ ] 没有提交 `internal/`、`runs/`、`regset/`、`.workbuddy/`、`RJ*/` 下的任何文件
+- [ ] 没有提交 `internal/`、`runs/`、`regset/`、`data/`、`RJ*/` 下的任何文件
 - [ ] 代码里没有绝对路径、没有真实作品号（用 `RJ0000001` 占位）、没有露骨台词
 - [ ] 影响产物时更新了 `pipeline/VERSION` 与 `pipeline/CHANGELOG.md`
 - [ ] 新增规则时给了**反例**（只给正例的规则一定会误杀）

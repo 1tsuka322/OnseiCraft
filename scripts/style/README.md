@@ -27,7 +27,7 @@ learning/<作品>/（音频+人工字幕）
 ```bash
 python asr_corpus.py [语料根目录] [输出根目录] [--only 关键字] [--skip 关键字]
 ```
-- 默认语料根 `$KIKOERU_ROOT\learning`，输出 `$KIKOERU_ROOT\.workbuddy\draft\learning`。
+- 默认语料根 `$KIKOERU_ROOT\learning`，输出 `$KIKOERU_ROOT\data\draft\learning`。
 - 已有 json 会跳过，可中断续跑。
 - **音频要直接在作品目录下**（若在 `mp3/` 子目录，先上移到作品根目录，否则报「没有找到音频文件」）。
 

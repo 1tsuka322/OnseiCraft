@@ -3,7 +3,7 @@ r"""errata 政策自检工具（2026-10-26，T7：把凌晨的手工审计 `erra
 
 为什么
 ------
-`.workbuddy/style/asr_errata.json`（auto/guard/review 三档）只看「命中数」不够定档：
+`data/style/asr_errata.json`（auto/guard/review 三档）只看「命中数」不够定档：
   · `行動→公道` 11 段里 10 段是正确用法（自由行動…）→ 只能 review；
   · `感→噛ん` 命中 5 段，但 `感` 全库 3155 次 → 错形是常用词，auto 会毁掉大量正确句；
   · `咲き走り→先走り` 9 段 / 6 部 / 错形不是词 → auto 安全。
@@ -51,8 +51,8 @@ ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.ab
 import styleloc  # noqa: E402
 ERRATA_PATH = styleloc.table("asr_errata.json")
 # 16 部成品（draft 根）+ 106 部学习语料（draft/learning）。
-CORPUS_ROOTS = [os.path.join(ROOT, ".workbuddy", "draft"),
-                os.path.join(ROOT, ".workbuddy", "draft", "learning")]
+CORPUS_ROOTS = [os.path.join(ROOT, "data", "draft"),
+                os.path.join(ROOT, "data", "draft", "learning")]
 
 
 def load_errata(path=ERRATA_PATH):
@@ -199,7 +199,7 @@ def cmd_test():
     queries = {e["ja"] for e in entries} | {e["fix"] for e in entries}
     stats, n_seg = gather(queries)
     if n_seg == 0:
-        print("⚠️ SKIP：没有找到 ASR 语料（.workbuddy/draft），errata 的语料断言无法执行。")
+        print("⚠️ SKIP：没有找到 ASR 语料（data/draft），errata 的语料断言无法执行。")
         print("   公开仓库不含语料，这是正常状态；有语料时会跑完整 %d 条断言。"
               % (len(entries) * 3))
         return 0
@@ -272,10 +272,10 @@ def main():
     ap.add_argument("--guard-samples", nargs=2, metavar=("JA", "N"), default=None,
                     help="打印该错形命中的段原文（默认最多 N=20 条），标 guard 是否命中")
     ap.add_argument("--test", action="store_true", help="门禁断言（退出码 0=全过）")
-    ap.add_argument("--json", nargs="?", const=os.path.join(ROOT, ".workbuddy", "tmp",
+    ap.add_argument("--json", nargs="?", const=os.path.join(ROOT, "data", "tmp",
                                                             "errata_audit.jsonl"),
                     default=None, metavar="PATH",
-                    help="审计结果另存 JSONL（每条一行 dict；缺省 .workbuddy/tmp/errata_audit.jsonl）")
+                    help="审计结果另存 JSONL（每条一行 dict；缺省 data/tmp/errata_audit.jsonl）")
     a = ap.parse_args()
 
     if a.test:

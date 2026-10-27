@@ -38,7 +38,7 @@ import argparse
 sys.stdout.reconfigure(encoding="utf-8")
 
 OUT_ROOT = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "kikoerusubtitle")
-ASR_ROOT = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "draft")
+ASR_ROOT = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "draft")
 DEF_OUT = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "regset")
 
 # 已知「两次解码易混」的近音词（用于 confusable 标签；可从平行语料继续扩）

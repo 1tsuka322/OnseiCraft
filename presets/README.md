@@ -88,7 +88,7 @@ export KIKOERU_STYLE=/path/to/my_style
 python scripts/style/build_library.py <你的语料目录>
 ```
 
-管线内部顺序：`KIKOERU_STYLE` → `<repo>/.workbuddy/style` → `<repo>/presets`。
+管线内部顺序：`KIKOERU_STYLE` → `<repo>/data/style` → `<repo>/presets`。
 
 ## 内容提示
 

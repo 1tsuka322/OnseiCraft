@@ -25,8 +25,8 @@ import collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
-GLOSS = os.path.join(ROOT, ".workbuddy", "style", "glossary_v3.json")
-OUTDIR = os.path.join(ROOT, ".workbuddy", "tmp", "terms_v4")
+GLOSS = os.path.join(ROOT, "data", "style", "glossary_v3.json")
+OUTDIR = os.path.join(ROOT, "data", "tmp", "terms_v4")
 
 # zh 侧通用词：不作为术语候选（出现再多也不是「术语」）
 STOP_ZH = set("""
@@ -67,7 +67,7 @@ def ja_tokens(text, tok):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lib", default=os.path.join(ROOT, ".workbuddy", "tmp", "seg_lib"))
+    ap.add_argument("--lib", default=os.path.join(ROOT, "data", "tmp", "seg_lib"))
     ap.add_argument("--min-works", type=int, default=3)
     ap.add_argument("--min-hit", type=int, default=8)
     ap.add_argument("--apply", action="store_true",

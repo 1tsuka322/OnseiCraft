@@ -49,7 +49,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 可用 KIKOERU_LRC_ROOT 指向别的成品目录（做 A/B 对照时扫另一组输出）
 OUT_ROOT = os.environ.get("KIKOERU_LRC_ROOT", os.path.join(ROOT, "kikoerusubtitle"))
-ASR_ROOT = os.path.join(ROOT, ".workbuddy/draft")
+ASR_ROOT = os.path.join(ROOT, "data/draft")
 DEF_OUT = os.path.join(ROOT, "regset")
 PUNCT = "。、，,.!！?？…♪~〜ー♡ \u3000「」『』（）()"
 
@@ -183,7 +183,7 @@ NEG_MODAL_JA = re.compile(r"ないと|なくちゃ|なきゃ|しか.{0,12}ない
                           r"|危ない|もったいない")
 NEG_MODAL_ZH = re.compile(r"必须|要|得|只能|只好|不得不|难以|受不了|太|可惜|危险|快")
 # ---- 语料挖出的语法/语气模式（learningskill 第三条通道，2026-10-22）----
-# `.workbuddy/style/grammar_patterns.json` 由 kikoeru-style-learn/scripts/mine_grammar.py
+# `data/style/grammar_patterns.json` 由 kikoeru-style-learn/scripts/mine_grammar.py
 # 从 8,667 句口语语料挖出、并经 UniDic 词典校验。缺失时退回内置保守集。
 GRAMMAR_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), "style", "grammar_patterns.json")
@@ -1427,7 +1427,7 @@ def main():
     # 2026-10-26：run 级口径。管线在 runs/<id>/ 里跑门禁时，
     # 必须扫**这次 run 的产物**而不是生产目录，否则 16 个 run 的 scan 数字全一样。
     ap.add_argument("--lrc-root", default="", help="LRC 根目录（默认 kikoerusubtitle）")
-    ap.add_argument("--asr-root", default="", help="ASR 根目录（默认 .workbuddy/draft）")
+    ap.add_argument("--asr-root", default="", help="ASR 根目录（默认 data/draft）")
     ap.add_argument("--rj", default="", help="只扫这个作品号（逗号分隔可多个）")
     a = ap.parse_args()
     if a.lrc_root:

@@ -22,8 +22,8 @@ sys.path.insert(0, SCRIPTS)
 from lock_match import norm_ja          # noqa: E402
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOCKS = os.path.join(ROOT, ".workbuddy", "locks")
-DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
+LOCKS = os.path.join(ROOT, "data", "locks")
+DRAFT = os.path.join(ROOT, "data", "draft")
 TS = re.compile(r"^\[(\d+):([\d.]+)\]$")
 
 

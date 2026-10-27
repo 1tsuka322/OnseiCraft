@@ -10,13 +10,13 @@ SCRIPTS = os.path.join(ROOT, "scripts")
 # 风格库/知识表：环境变量 → 本地真实库（含平行语料，不入库）→ 公开预设 presets/
 # 这层回落是给「刚 clone 下来、还没有自己语料」的人用的：能跑，效果走规则与词典。
 _PRESETS = os.path.join(ROOT, "presets")
-_LOCAL_STYLE = os.path.join(ROOT, ".workbuddy", "style")
+_LOCAL_STYLE = os.path.join(ROOT, "data", "style")
 STYLE = (os.environ.get("KIKOERU_STYLE")
          or (_LOCAL_STYLE if os.path.isdir(_LOCAL_STYLE) else _PRESETS))
-DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
+DRAFT = os.path.join(ROOT, "data", "draft")
 PROD = os.environ.get("KIKOERU_PROD", os.path.join(ROOT, "kikoerusubtitle"))
-LOCKS = os.path.join(ROOT, ".workbuddy", "locks")
-OVERLAY = os.path.join(ROOT, ".workbuddy", "repair_overlay")
+LOCKS = os.path.join(ROOT, "data", "locks")
+OVERLAY = os.path.join(ROOT, "data", "repair_overlay")
 
 RUNS = os.environ.get("KIKOERU_RUNS", os.path.join(ROOT, "runs"))
 KNOW = os.environ.get("KIKOERU_KNOWLEDGE", os.path.join(ROOT, "knowledge"))
@@ -26,11 +26,11 @@ KNOW_TESTS = os.path.join(KNOW, "tests")
 KNOW_BACKUPS = os.path.join(KNOW, "backups")
 KNOW_REGISTRY = os.path.join(KNOW, "registry.json")
 
-TMP = os.path.join(ROOT, ".workbuddy", "tmp")
+TMP = os.path.join(ROOT, "data", "tmp")
 QUEUE = os.path.join(TMP, "pipeline_queue")
 CONFIG = os.path.join(ROOT, "pipeline.json")
 
-# 生产知识表：**唯一真相**在 .workbuddy/style/，这里只登记「参与版本化的是哪些文件」。
+# 生产知识表：**唯一真相**在 data/style/，这里只登记「参与版本化的是哪些文件」。
 # role 用于「这条产物依赖哪类知识」的追溯与失效判断。
 KNOWLEDGE_FILES = [
     ("asr_errata.json", "asr_fix", "已核实 ASR 错字表"),
@@ -45,7 +45,7 @@ KNOWLEDGE_FILES = [
 ]
 
 DEFAULTS = {
-    "python": r"C:/Users/zyk/.workbuddy/binaries/python/envs/default/Scripts/python.exe",
+    "python": r"C:/Users/zyk/data/binaries/python/envs/default/Scripts/python.exe",
     "device": "cuda",
     "compute": "float16",
     "engine": "hymt",

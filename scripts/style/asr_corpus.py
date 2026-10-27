@@ -8,7 +8,7 @@ r"""
 用法：
   python asr_corpus.py [语料根目录] [输出根目录]
     语料根目录 默认 $KIKOERU_ROOT\learning
-    输出根目录 默认 $KIKOERU_ROOT\.workbuddy\draft\learning
+    输出根目录 默认 $KIKOERU_ROOT\data\draft\learning
 
 产出：
   <输出根目录>\<作品目录名>\asr\<音频文件名>.json
@@ -30,7 +30,7 @@ assert os.path.isdir(SUB_SCRIPTS), "找不到 subtitle 脚本目录：%s" % SUB_
 sys.path.insert(0, SUB_SCRIPTS)
 import asr  # noqa: E402
 DEFAULT_CORPUS = r"$KIKOERU_ROOT\learning"
-DEFAULT_OUT = r"$KIKOERU_ROOT\.workbuddy\draft\learning"
+DEFAULT_OUT = r"$KIKOERU_ROOT\data\draft\learning"
 
 
 def main():

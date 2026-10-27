@@ -22,7 +22,7 @@ except ImportError:
 JPN = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff]")
 NUM = re.compile(r"^\s*\d+\s*[|｜]")
 TS = re.compile(r"^\[(\d+):([\d.]+)\]")
-# 风格库位置统一由 styleloc 解析：环境变量 → .workbuddy/style → presets（公开预设）
+# 风格库位置统一由 styleloc 解析：环境变量 → data/style → presets（公开预设）
 import styleloc  # noqa: E402
 DEFAULT_STYLE = styleloc.style_dir()
 

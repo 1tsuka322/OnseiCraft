@@ -34,7 +34,7 @@ import collections
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "regset", "r122")
-CORPUS = os.path.join(ROOT, ".workbuddy/style/parallel.json")
+CORPUS = os.path.join(ROOT, "data/style/parallel.json")
 
 # ---- 黄金种子表（Gemini 方案③：100 个核心高频成人用语/惯用语）----
 SEED = """おまんこ まんこ おちんぽ ちんぽ チンポ ちんこ おっぱい お乳 乳首 乳頭
@@ -103,7 +103,7 @@ def main():
     # janome 会把 `おまんこ` 切成 `お+まんこ`、`ザーメン` 切成 `ザー+メン`，
     # 导致成人向核心词在词元频次里全是 0（实测 おまんこ 语料 1607 次但词元 0 次）。
     targets = set(SEED)
-    gp = os.path.join(ROOT, ".workbuddy/style/glossary.json")
+    gp = os.path.join(ROOT, "data/style/glossary.json")
     if os.path.exists(gp):
         targets |= set(json.load(open(gp, encoding="utf-8")).keys())
     for rx, _ in REGEXES:

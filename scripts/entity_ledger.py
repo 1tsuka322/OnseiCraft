@@ -418,11 +418,11 @@ def main():
     ap.add_argument("rj", help="作品号，如 RJ9000016")
     ap.add_argument("--meta-root", default="kikoerusubtitle")
     ap.add_argument("--asr-dir", default="",
-                    help="ASR json 目录（默认 .workbuddy/draft/<rj>/asr）")
+                    help="ASR json 目录（默认 data/draft/<rj>/asr）")
     ap.add_argument("--dump", default="", help="写出到该 json 路径")
     a = ap.parse_args()
 
-    asr = a.asr_dir or os.path.join(".workbuddy/draft", a.rj, "asr")
+    asr = a.asr_dir or os.path.join("data/draft", a.rj, "asr")
     meta = find_meta_for(a.rj, [a.meta_root])
     led = build_ledger(a.rj, meta, asr)
 

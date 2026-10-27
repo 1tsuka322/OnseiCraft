@@ -70,7 +70,7 @@ def main():
     ap.add_argument("--slots", type=int, default=2, help="llama-server -np 值")
     ap.add_argument("--ctx", type=int, default=24576, help="llama-server -c 值")
     ap.add_argument("--style", default=os.environ.get(
-        "KIKOERU_STYLE", os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "style")))
+        "KIKOERU_STYLE", os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "style")))
     a = ap.parse_args()
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

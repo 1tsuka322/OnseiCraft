@@ -6,10 +6,10 @@ r"""
   python polish.py <ASR目录> <初译目录> <输出目录> [--style DIR] [文件名关键字]
 
 例：
-  python polish.py "./asr_out" "$KIKOERU_ROOT/.workbuddy/draft/RJ9000005" \
+  python polish.py "./asr_out" "$KIKOERU_ROOT/data/draft/RJ9000005" \
                    "$KIKOERU_ROOT/kikoerusubtitle/RJ9000005"
 
-风格资料默认读 $KIKOERU_ROOT\.workbuddy\style（由 kikoeru-style-learn 生成）：
+风格资料默认读 $KIKOERU_ROOT\data\style（由 kikoeru-style-learn 生成）：
   parallel.json / style_guide.txt / hard_rules.txt / stats.json
 """
 import os
@@ -57,12 +57,12 @@ except ImportError:
 
 API = "http://127.0.0.1:8080/v1/chat/completions"
 # ---- E1 句级锁定（2026-10-21，借鉴 ASMR-Dubber 的「锁定不被重跑覆盖」）----
-# review.py 审阅页勾「锁定」的行写进 <ROOT>/.workbuddy/locks/<作品名>.json
+# review.py 审阅页勾「锁定」的行写进 <ROOT>/data/locks/<作品名>.json
 # （key = "文件|时间戳"，值 = {zh: 锁定文本, old: 锁定前原文}；旧格式纯字符串也认）。
 # 重跑 polish 时按 key 覆写 → 人工修正不再被批量重跑冲掉。
 # key 漂移（显示层切分变化导致 ts 移位）时回退按 old 原文认领。
 # KIKOERU_NO_LOCKS=1 可关（A/B 对照用）。
-LOCKS_DIR = os.environ.get("KIKOERU_LOCKS", os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "locks"))
+LOCKS_DIR = os.environ.get("KIKOERU_LOCKS", os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "locks"))
 LOCK_MAP = {}    # (file, ts) -> 锁定文本（主 key）
 LOCK_OLD = {}    # (file, old_text) -> 锁定文本（历史兜底）
 LOCK_RAW = {}    # (file, ts) -> {zh, ja}（喂给 lock_match）
@@ -132,11 +132,11 @@ def apply_lock(fn, ts, text, ja=""):
 # ---- E2 cue 级缓存签名（2026-10-21，借鉴 ASMR-Dubber 的「改一句只重做一句」）----
 # 签名 = 轨名 + ja + 起止时间 + 该条初译 + 模型 + CHUNK/MASK/review/system_mode +
 # system prompt 哈希。命中即跳过 LLM、直接复用旧译文——术语/风格微调后的重跑
-# 从「每轨全量」降到「只跑变了的句」。缓存按作品存：.workbuddy/cache/polish_sig/<作品>.json
+# 从「每轨全量」降到「只跑变了的句」。缓存按作品存：data/cache/polish_sig/<作品>.json
 # ⚠️ 锁行在写盘时覆写（apply_lock），与缓存正交；--cleanup-only 不过 LLM，不走缓存。
 # `--force` / `KIKOERU_NO_CACHE=1` 可全量重跑（缓存仍会按新结果更新）。
 CACHE_DIR = os.environ.get("KIKOERU_CACHE_DIR",
-                           os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "cache", "polish_sig"))
+                           os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "cache", "polish_sig"))
 _SYS_MODE = ["strong"]      # 当前 system_mode，cue_sig 用（main 里同步）
 
 
@@ -165,7 +165,7 @@ def cue_sig(src, ln, old, system, mem=""):
 _ENGINE_NAME = {"sakura": "Sakura-7B-Qwen2.5-v1.0", "qwen3": "Qwen3-8B"}.get(
     os.environ.get("KIKOERU_ENGINE", "qwen"), "Qwen2.5-7B")
 MODEL_TAG = "faster-whisper large-v3 + %s (人工风格对齐)" % _ENGINE_NAME
-# 风格库位置统一由 styleloc 解析：环境变量 → .workbuddy/style → presets（公开预设）
+# 风格库位置统一由 styleloc 解析：环境变量 → data/style → presets（公开预设）
 import styleloc  # noqa: E402
 DEFAULT_STYLE = styleloc.style_dir()
 

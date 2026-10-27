@@ -6,7 +6,7 @@ r"""
   python translate.py <ASR目录> <初译输出目录> [文件名关键字]
 
 例：
-  python translate.py "./asr_out" "$KIKOERU_ROOT/.workbuddy/draft/RJ9000005"
+  python translate.py "./asr_out" "$KIKOERU_ROOT/data/draft/RJ9000005"
 
 产出：<初译输出目录>\<音频文件名>.lrc（后面交给 polish.py 润色）
 """

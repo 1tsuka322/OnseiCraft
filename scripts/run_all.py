@@ -14,10 +14,10 @@ r"""
   python run_all.py "$KIKOERU_ROOT/RJ9000005/wav" RJ9000005 --ext wav
 
 目录约定：
-  中间产物  $KIKOERU_ROOT/.workbuddy/draft/<名称>/asr      识别日文 JSON
-            $KIKOERU_ROOT/.workbuddy/draft/<名称>/draft    机器初译 LRC
+  中间产物  $KIKOERU_ROOT/data/draft/<名称>/asr      识别日文 JSON
+            $KIKOERU_ROOT/data/draft/<名称>/draft    机器初译 LRC
   最终字幕  $KIKOERU_ROOT/kikoerusubtitle/<名称>/<文件名>.lrc
-  风格资料  $KIKOERU_ROOT/.workbuddy/style（由 kikoeru-style-learn 生成）
+  风格资料  $KIKOERU_ROOT/data/style（由 kikoeru-style-learn 生成）
 """
 import os
 import sys
@@ -71,7 +71,7 @@ def main():
                     help="台本目录（有则走「打轴」路径：ASR 只当时间锚点，文本用台本）")
     a = ap.parse_args()
 
-    draft = os.path.join(ROOT, ".workbuddy", "draft", a.name)
+    draft = os.path.join(ROOT, "data", "draft", a.name)
     asr_dir = os.path.join(draft, "asr")
     draft_dir = os.path.join(draft, "draft")
     out_dir = os.path.join(ROOT, "kikoerusubtitle", a.name)
@@ -119,10 +119,10 @@ def main():
              asr_raw_dir, asr_dir], "台本打轴（台本文本 + ASR 时间轴）")
     if "diarize" in steps:
         # C1（2026-10-21）：声纹聚类写 segments[].speaker=SPEAKER_xx。
-        # 与 whisper 不冲突（纯 CPU，模型已在 .workbuddy/models/spkrec-ecapa）。
+        # 与 whisper 不冲突（纯 CPU，模型已在 data/models/spkrec-ecapa）。
         # 台本作品跳过——script_align 已带真实角色名，聚类只会覆盖它。
         if not has_script:
-            diarize_py = os.path.join(ROOT, ".workbuddy", "skills",
+            diarize_py = os.path.join(ROOT, "data", "skills",
                                       "kikoeru-style-learn", "scripts", "diarize.py")
             run([diarize_py, asr_dir, a.src, "--device", "cpu",
                  "--thr", str(a.diarize_thr)], "声纹聚类（说话人分桶）")

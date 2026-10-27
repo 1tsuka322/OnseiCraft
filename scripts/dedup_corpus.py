@@ -20,7 +20,7 @@ per-pair 质检与术语频次被高估约 2~4 倍。
 ----
   python dedup_corpus.py --stats                          # 只报统计，不写文件（默认）
   python dedup_corpus.py --stats --term 忍耐汁,我慢汁,射精
-  python dedup_corpus.py --write                          # 写 .workbuddy/tmp/parallel_dedup.json
+  python dedup_corpus.py --write                          # 写 data/tmp/parallel_dedup.json
   python dedup_corpus.py --write --term 忍耐汁
 
 parallel.json 只读，绝不改写。dedup_pairs()/overlap_ratio() 是公共函数，
@@ -34,8 +34,8 @@ import collections
 
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CORPUS = os.path.join(ROOT, ".workbuddy", "style", "parallel.json")
-DEDUP_OUT = os.path.join(ROOT, ".workbuddy", "tmp", "parallel_dedup.json")
+CORPUS = os.path.join(ROOT, "data", "style", "parallel.json")
+DEDUP_OUT = os.path.join(ROOT, "data", "tmp", "parallel_dedup.json")
 THR = 0.5          # 时间重叠比例阈值（人工拍板，勿改）
 MIN_WORK_PAIRS = 100   # 重叠率 top10 只列达到这个对数的作品（避免小作品噪声）
 

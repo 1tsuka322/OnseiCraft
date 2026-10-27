@@ -397,7 +397,7 @@ def find_lrcs(target):
 # 本函数只读不写：逐行看「日文命中某术语 → 中文有没有用允许译法 / 有没有用禁用译法」，
 # 产出清单交给 fixline 或人工，而不是自动改。
 TERMS_DB = os.path.join(os.environ.get("KIKOERU_STYLE",
-                                       r"D://aiwork//kikoeru//.workbuddy//style"),
+                                       styleloc.style_dir()),
                         "terms_db.json")
 
 

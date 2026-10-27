@@ -14,7 +14,7 @@ learning/
 listen_*/
 
 # 中间产物 / 语料 / 回归集 / 锁 / 覆盖层 / 风格库 / 模型
-.workbuddy/
+data/
 .workbuddy-ai/
 
 # 运行产物

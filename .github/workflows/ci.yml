@@ -57,7 +57,7 @@ jobs:
           if git ls-files | grep -Ei '\.(mp3|flac|wav|m4a|onnx|gguf|bin|pt)$'; then
             echo "::error::音频/模型文件被提交了"; fail=1
           fi
-          if git ls-files | grep -E '^(RJ[0-9]|kikoerusubtitle|runs|regset|knowledge|tmp|internal|\.workbuddy)' | head -5; then
+          if git ls-files | grep -E '^(RJ[0-9]|kikoerusubtitle|runs|regset|knowledge|tmp|internal|data)' | head -5; then
             echo "::error::数据或内部台账被提交了（应被 .gitignore 挡住）"; fail=1
           fi
           if git ls-files '*.lrc' | grep -v '^examples/'; then

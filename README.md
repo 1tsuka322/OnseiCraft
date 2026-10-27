@@ -62,23 +62,6 @@ $P status                                                 # 所有 run 一览
 
 没有 GPU 也能跑 `02_asr_fix` / `05_term_lock` / `06_checks` 三个阶段和全部门禁——它们不调模型。
 
-## 目录
-
-| 路径 | 内容 | 进版本库 |
-|---|---|---|
-| `pipeline/` | 管线主体（CLI + 六阶段 + manifest + 知识表事务 + GPU 锁） | ✅ |
-| `scripts/` | 各阶段可独立调用的脚本（52 个）+ `scripts/style/`（风格学习） | ✅ |
-| **`presets/`** | **公开预设知识包**：术语表 / 允许集 / 错字表 / 表记白名单 / 硬规则 / 统计 / 合成 few-shot | ✅ |
-| `docs/` | 架构、管线、知识表格式 | ✅ |
-| `examples/` | 合成样例（手写假数据，无版权内容） | ✅ |
-| `.workbuddy/` | 风格库 / 中间产物 / 句级锁 / 覆盖层 / 模型 | ❌ |
-| `kikoerusubtitle/` | 成品字幕 | ❌ |
-| `runs/` `regset/` `knowledge/` | 运行沙盒 / 回归集 / 知识表版本 | ❌ |
-| `internal/` | 维护者内部台账（含真实作品号与露骨例句） | ❌ |
-| `RJ*/` | 原始音频 | ❌ |
-
-数据目录都可用环境变量改：`KIKOERU_ROOT` / `KIKOERU_STYLE` / `KIKOERU_PROD` / `KIKOERU_RUNS`。
-
 ## 效果分档（重要，别抱不切实际的期待）
 
 这个项目的效果**有很大一部分不在代码里，而在知识表**——术语怎么统一、ASR 错字怎么改、
@@ -92,7 +75,7 @@ $P status                                                 # 所有 run 一览
 | `presets/` + 你自己的语料 | **明显更好**：few-shot 贴着目标译者的风格 | `python scripts/style/build_library.py <你的语料目录>` |
 | 自己长期维护的知识表 | 最好 | 术语/错字边用边加，这是长期收益最大的一件事 |
 
-风格库查找顺序：`KIKOERU_STYLE` → `<repo>/.workbuddy/style` → `<repo>/presets`。
+风格库查找顺序：`KIKOERU_STYLE` → `<repo>/data/style` → `<repo>/presets`。
 所以「有私有语料」和「刚 clone」两种环境跑的是同一份代码，区别只是效果强弱。
 
 详见 [`presets/README.md`](presets/README.md)。
@@ -103,10 +86,12 @@ $P status                                                 # 所有 run 一览
 
 - 音频（`.mp3` / `.flac` / `.wav`）
 - 可选：官方台本（PDF/txt），有台本时 ASR 只当时间锚点，精度显著更高
-- 可选：目标译者的风格库（默认读 `.workbuddy/style/`），没有就用内置默认规则
+- 可选：目标译者的风格库（不提供就用仓库里的 `presets/`）
 
 **请只处理你有权处理的内容。** 生成的字幕属于原作品的衍生内容，
 是否分发、分发到哪里，由你自行判断并承担相应责任。
+
+数据目录都可用环境变量改：`KIKOERU_ROOT` / `KIKOERU_STYLE` / `KIKOERU_PROD` / `KIKOERU_RUNS`。
 
 ## 文档
 

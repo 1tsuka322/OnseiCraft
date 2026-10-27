@@ -8,7 +8,7 @@ r"""
 例：
   python align_style.py "$KIKOERU_ROOT/kikoerusubtitle/RJ1401520" "./asr_out_1401520" --tag RJ1401520
 
-产出（默认写入 $KIKOERU_ROOT/.workbuddy/style）：
+产出（默认写入 $KIKOERU_ROOT/data/style）：
   parallel.json    累积的「日→中」平行句对（多次运行会合并去重）
   stats.json       客观统计（句末句号率、省略号率、语气词率、平均句长、高频词）
   style_guide.txt  大模型归纳的风格指南
@@ -32,7 +32,7 @@ except ImportError:
     def to_zh_cn(t):
         return t
 
-DEFAULT_STYLE = os.environ.get("KIKOERU_STYLE", r"$KIKOERU_ROOT\.workbuddy\style")
+DEFAULT_STYLE = os.environ.get("KIKOERU_STYLE", r"$KIKOERU_ROOT\data\style")
 API = "http://127.0.0.1:8080/v1/chat/completions"
 
 VTT_TS = re.compile(r"(\d{1,2}):(\d{2}):(\d{2})[.,](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[.,](\d{3})")
@@ -291,12 +291,12 @@ def align_by_segment(subs, asr, min_ov=0.5, max_seg=18.0, min_ja=4):
 # ---- B6 用户裁定术语（2026-10-21，人工筛 126 条候选的采纳结果）----
 # 语义：**用户拍板 > 语料统计**。build_glossary 里命中这里就直接用固定译法，
 # 不再按共现投票（否则「赤ちゃん→小宝宝」会被语料多数「婴儿」翻掉）。
-# 来源：.workbuddy/tmp/term_review/adopted.json（27 条，含 キス 由「接吻」改判「亲吻」）。
+# 来源：data/tmp/term_review/adopted.json（27 条，含 キス 由「接吻」改判「亲吻」）。
 # ⚠️ 改这里之后必须重跑 build_library.py，否则 style/glossary.json 不更新。
 # 退役钉法（2026-10-25）：这些词在语料里「钉的那个译法」自己都不到一半
 # （glossary 的 rate 字段 0.11–0.46），当「固定译法」注入会误导模型
 # （例：わかる→明白，语料只有 11% 这么译，成品实际用「知道」）。
-# 判据与原因见 `.workbuddy/style/retired_pins.json`；重建库时跳过它们。
+# 判据与原因见 `data/style/retired_pins.json`；重建库时跳过它们。
 RETIRED_PINS = {"わかる", "出る", "エッチ", "やばい", "もっと", "我慢", "恥ずかしい", "嬉しい"}
 
 USER_TERMS = {

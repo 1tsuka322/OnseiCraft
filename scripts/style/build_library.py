@@ -14,7 +14,7 @@ r"""
   python build_library.py --key 柚木            # 只跑名字里含关键字的作品
   python build_library.py --no-llm              # 不调大模型归纳风格指南
 
-产出（默认 $KIKOERU_ROOT/.workbuddy/style）：
+产出（默认 $KIKOERU_ROOT/data/style）：
   parallel.json / stats.json / glossary.json / hard_rules.txt / style_guide.txt
 """
 import os
@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import align_style as A  # noqa: E402
 
 CORPUS = r"$KIKOERU_ROOT\learning"
-ASR_ROOT = r"$KIKOERU_ROOT\.workbuddy\draft\learning"
+ASR_ROOT = r"$KIKOERU_ROOT\data\draft\learning"
 
 
 def pairs_of_work(work_dir, asr_dir, tag, verbose=True):

@@ -18,8 +18,8 @@
 
 产出（不覆盖 asr/）
 ------------------
-  .workbuddy/draft/<rj>/asr_fix/<track>.candidates.json   候选清单（含证据）
-  .workbuddy/draft/<rj>/asr_fix/<track>.review.md         人工/LLM 复核单
+  data/draft/<rj>/asr_fix/<track>.candidates.json   候选清单（含证据）
+  data/draft/<rj>/asr_fix/<track>.review.md         人工/LLM 复核单
   人工确认后写 <track>.json（结构同 asr/，但带 fix_log），translate 优先读它。
 
 用法：
@@ -36,7 +36,7 @@ import re
 
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
+DRAFT = os.path.join(ROOT, "data", "draft")
 KANJI = lambda c: "\u4e00" <= c <= "\u9fff"
 
 
@@ -126,7 +126,7 @@ _ERRATA = [None]
 
 
 def load_errata():
-    """已知系统性错字表（`.workbuddy/style/asr_errata.json`）。
+    """已知系统性错字表（`data/style/asr_errata.json`）。
 
     为什么要有这条规则（2026-10-25）：A1/A2/A3 全靠「两版不一致」，
     可**两版一致地错**时它们全都看不见（`写生`/`処世` 就是这样漏了整年）。
@@ -143,7 +143,7 @@ _DNC = [None]
 
 
 def load_do_not_change():
-    """表记差异白名单（`.workbuddy/style/do_not_change.json`）。
+    """表记差异白名单（`data/style/do_not_change.json`）。
 
     2026-10-26：Gemini 任务07 的 233 条「表记」判定 → 86 组成对写法。
     这些是**同一个词的不同表记**（`ちんぽ/チンポ`、`こと/事`、`だめ/ダメ`、`ぼっき/勃起`），

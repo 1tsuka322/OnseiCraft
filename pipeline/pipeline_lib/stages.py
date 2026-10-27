@@ -216,7 +216,7 @@ def stage_asr(ctx):
         if code != 0:
             raise RuntimeError("script_align.py 退出码 %d" % code)
     elif ctx.cfg.get("diarize"):
-        dia = os.path.join(paths.ROOT, ".workbuddy", "skills", "kikoeru-style-learn",
+        dia = os.path.join(paths.ROOT, "data", "skills", "kikoeru-style-learn",
                            "scripts", "diarize.py")
         _tee([ctx.py, dia, asr, ctx.source, "--device", "cpu",
               "--thr", str(ctx.cfg.get("diarize_thr", 0.30))],
