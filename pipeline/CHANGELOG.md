@@ -218,7 +218,7 @@ check.py 全部通过 · run ✅
 
 - 释放 **1.85 GB**：三包标注音频（标注已归档 800 条到 `tmp/label_archive/`）、
   parallel 旧备份 6 份（留最新 1 份）、已结案的实验产物、`anime-whisper-ct2`（1.5 GB，废弃模型）。
-- 逐项清单：`docs/status/CLEANUP_EXECUTED_20261026.json`。
+- 逐项清单见维护者内部台账（不入库）。
 
 ### 已知缺口（下一版）
 

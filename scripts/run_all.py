@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 r"""
 ⚠️ 2026-10-26 起：**生产请用 `pipeline/pipeline.py`**（有 manifest/指纹/断点续跑/门禁）。
-本脚本保留作「单步调试 + 快速手跑」，不再作为交付入口（见 docs/rules/PIPELINE.md）。
+本脚本保留作「单步调试 + 快速手跑」，不再作为交付入口（见 docs/PIPELINE.md）。
 
 一键流水线：识别 -> 翻译 -> 风格润色 -> 校验 -> 输出到 kikoerusubtitle/<名称>/
 

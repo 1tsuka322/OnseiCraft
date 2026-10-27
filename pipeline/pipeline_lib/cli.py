@@ -782,7 +782,7 @@ def cmd_version(args):
         pass
     print("kikoeru-pipeline %s" % v)
     print("代码：%s" % os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    print("说明：docs/rules/PIPELINE.md · 变更：pipeline/CHANGELOG.md")
+    print("说明：docs/PIPELINE.md · 变更：pipeline/CHANGELOG.md")
     return 0
 
 

@@ -7,7 +7,7 @@
 > ⚠️ **2026-10-26 起：生产执行走 `pipeline/pipeline.py`，不要再在对话里手串这些脚本。**
 > `run_all.py` 也降级为「单步调试用」，不再是交付入口。
 > 本目录的 `.py` 是**工具层**（单个脚本仍可独立调用、可被管线当阶段调用）；
-> 编排/断点续跑/GPU 互斥/manifest 追溯在 `pipeline_lib/`，说明见 `docs/rules/PIPELINE.md`。
+> 编排/断点续跑/GPU 互斥/manifest 追溯在 `pipeline_lib/`，说明见 `docs/PIPELINE.md`。
 
 ## 依赖关系（数据流）
 
@@ -94,7 +94,7 @@ python script_align.py <script目录> <asr_raw目录> <asr目录>
 - 产物额外带 `segments[].spk`（台本的 `【みう】`/`【ねね】` 说话人标记），polish 已消费。
 - ⚠️ **打轴仍要跑 ASR**（时间锚点），台本解决文本准确、不省 ASR 时间。
 
-详见项目根 `docs/rules/SCRIPT_ALIGN.md`。
+详见 `docs/PIPELINE.md` 的台本打轴一节。
 
 ### asr.py —— 音频识别（faster-whisper large-v3）
 ```bash

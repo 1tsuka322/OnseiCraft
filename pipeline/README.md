@@ -52,6 +52,6 @@ cd $KIKOERU_ROOT
 
 ## 完整文档
 
-- 设计与边界：`docs/rules/PIPELINE.md`（为什么这么设计 / 命令 / manifest 字段 / 已知缺口）
+- 设计与边界：`docs/PIPELINE.md`（为什么这么设计 / 命令 / manifest 字段 / 已知缺口）
 - 工作台入口：`docs/WORKBENCH.md`
-- 桌面桥（ZCode/Gemini/ChatGPT）：`docs/rules/BRIDGES.md`
+- 外部模型协作与合规红线：`CONTRIBUTING.md`
