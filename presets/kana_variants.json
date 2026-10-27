@@ -1,0 +1,697 @@
+{
+ "small": [
+  {
+   "variant": "ってー",
+   "n_variant": 20,
+   "standard": "って",
+   "n_standard": 2152
+  },
+  {
+   "variant": "ーって",
+   "n_variant": 7,
+   "standard": "って",
+   "n_standard": 2152
+  },
+  {
+   "variant": "じゃぁ",
+   "n_variant": 1,
+   "standard": "じゃあ",
+   "n_standard": 933
+  },
+  {
+   "variant": "ーじゃあ",
+   "n_variant": 1,
+   "standard": "じゃあ",
+   "n_standard": 933
+  },
+  {
+   "variant": "ぅーんー",
+   "n_variant": 1,
+   "standard": "うん",
+   "n_standard": 841
+  },
+  {
+   "variant": "ちょーっと",
+   "n_variant": 1,
+   "standard": "ちょっと",
+   "n_standard": 587
+  },
+  {
+   "variant": "ちょっとー",
+   "n_variant": 2,
+   "standard": "ちょっと",
+   "n_standard": 587
+  },
+  {
+   "variant": "もーっと",
+   "n_variant": 4,
+   "standard": "もっと",
+   "n_standard": 513
+  },
+  {
+   "variant": "ちゃーん",
+   "n_variant": 2,
+   "standard": "ちゃん",
+   "n_standard": 464
+  },
+  {
+   "variant": "ーちゃん",
+   "n_variant": 16,
+   "standard": "ちゃん",
+   "n_standard": 464
+  },
+  {
+   "variant": "ったー",
+   "n_variant": 13,
+   "standard": "った",
+   "n_standard": 389
+  },
+  {
+   "variant": "いーっぱい",
+   "n_variant": 16,
+   "standard": "いっぱい",
+   "n_standard": 388
+  },
+  {
+   "variant": "だーって",
+   "n_variant": 2,
+   "standard": "だって",
+   "n_standard": 289
+  },
+  {
+   "variant": "ちゃーんと",
+   "n_variant": 1,
+   "standard": "ちゃんと",
+   "n_standard": 285
+  },
+  {
+   "variant": "っとー",
+   "n_variant": 3,
+   "standard": "っと",
+   "n_standard": 271
+  },
+  {
+   "variant": "ーっと",
+   "n_variant": 8,
+   "standard": "っと",
+   "n_standard": 271
+  },
+  {
+   "variant": "あぁー",
+   "n_variant": 1,
+   "standard": "ああ",
+   "n_standard": 219
+  },
+  {
+   "variant": "ーちゃんの",
+   "n_variant": 3,
+   "standard": "ちゃんの",
+   "n_standard": 202
+  },
+  {
+   "variant": "ーやっぱり",
+   "n_variant": 1,
+   "standard": "やっぱり",
+   "n_standard": 182
+  },
+  {
+   "variant": "えっとー",
+   "n_variant": 2,
+   "standard": "えっと",
+   "n_standard": 149
+  },
+  {
+   "variant": "えーっとー",
+   "n_variant": 1,
+   "standard": "えっと",
+   "n_standard": 149
+  },
+  {
+   "variant": "かったー",
+   "n_variant": 6,
+   "standard": "かった",
+   "n_standard": 142
+  },
+  {
+   "variant": "じゃー",
+   "n_variant": 2,
+   "standard": "じゃ",
+   "n_standard": 141
+  },
+  {
+   "variant": "きーって",
+   "n_variant": 1,
+   "standard": "きって",
+   "n_standard": 141
+  },
+  {
+   "variant": "ちょー",
+   "n_variant": 4,
+   "standard": "ちょ",
+   "n_standard": 137
+  },
+  {
+   "variant": "ーめっちゃ",
+   "n_variant": 1,
+   "standard": "めっちゃ",
+   "n_standard": 122
+  },
+  {
+   "variant": "ーそっか",
+   "n_variant": 1,
+   "standard": "そっか",
+   "n_standard": 119
+  },
+  {
+   "variant": "ーっても",
+   "n_variant": 2,
+   "standard": "っても",
+   "n_standard": 119
+  },
+  {
+   "variant": "こうやってー",
+   "n_variant": 1,
+   "standard": "こうやって",
+   "n_standard": 115
+  },
+  {
+   "variant": "うーっ",
+   "n_variant": 1,
+   "standard": "うっ",
+   "n_standard": 94
+  },
+  {
+   "variant": "とーっても",
+   "n_variant": 4,
+   "standard": "とっても",
+   "n_standard": 89
+  },
+  {
+   "variant": "いっも",
+   "n_variant": 1,
+   "standard": "いつも",
+   "n_standard": 87
+  },
+  {
+   "variant": "ーよかった",
+   "n_variant": 1,
+   "standard": "よかった",
+   "n_standard": 84
+  },
+  {
+   "variant": "わーかった",
+   "n_variant": 2,
+   "standard": "わかった",
+   "n_standard": 80
+  },
+  {
+   "variant": "んーっ",
+   "n_variant": 7,
+   "standard": "んっ",
+   "n_standard": 75
+  },
+  {
+   "variant": "あーっ",
+   "n_variant": 3,
+   "standard": "あっ",
+   "n_standard": 73
+  },
+  {
+   "variant": "ーすっごく",
+   "n_variant": 1,
+   "standard": "すっごく",
+   "n_standard": 73
+  },
+  {
+   "variant": "ちよかったー",
+   "n_variant": 3,
+   "standard": "ちよかった",
+   "n_standard": 71
+  },
+  {
+   "variant": "っててー",
+   "n_variant": 2,
+   "standard": "ってて",
+   "n_standard": 71
+  },
+  {
+   "variant": "っちゃったー",
+   "n_variant": 5,
+   "standard": "っちゃった",
+   "n_standard": 70
+  },
+  {
+   "variant": "もっともっとー",
+   "n_variant": 1,
+   "standard": "もっともっと",
+   "n_standard": 70
+  },
+  {
+   "variant": "ってくださーい",
+   "n_variant": 3,
+   "standard": "ってください",
+   "n_standard": 69
+  },
+  {
+   "variant": "ちよーくなって",
+   "n_variant": 1,
+   "standard": "ちよくなって",
+   "n_standard": 66
+  },
+  {
+   "variant": "ゆっくりー",
+   "n_variant": 1,
+   "standard": "ゆっくり",
+   "n_standard": 63
+  },
+  {
+   "variant": "ゆーっくり",
+   "n_variant": 2,
+   "standard": "ゆっくり",
+   "n_standard": 63
+  },
+  {
+   "variant": "ってねー",
+   "n_variant": 6,
+   "standard": "ってね",
+   "n_standard": 62
+  },
+  {
+   "variant": "うぅー",
+   "n_variant": 3,
+   "standard": "うぅ",
+   "n_standard": 60
+  },
+  {
+   "variant": "うーぅ",
+   "n_variant": 1,
+   "standard": "うぅ",
+   "n_standard": 60
+  },
+  {
+   "variant": "まってー",
+   "n_variant": 1,
+   "standard": "まって",
+   "n_standard": 56
+  },
+  {
+   "variant": "ーちゃんが",
+   "n_variant": 3,
+   "standard": "ちゃんが",
+   "n_standard": 54
+  },
+  {
+   "variant": "いーっぱ",
+   "n_variant": 1,
+   "standard": "いっぱ",
+   "n_standard": 50
+  }
+ ],
+ "voice": [
+  {
+   "variant": "つで",
+   "n_variant": 1,
+   "standard": "って",
+   "n_standard": 2152
+  },
+  {
+   "variant": "ばい",
+   "n_variant": 11,
+   "standard": "はい",
+   "n_standard": 1057
+  },
+  {
+   "variant": "ぱい",
+   "n_variant": 4,
+   "standard": "はい",
+   "n_standard": 1057
+  },
+  {
+   "variant": "ごの",
+   "n_variant": 1,
+   "standard": "この",
+   "n_standard": 905
+  },
+  {
+   "variant": "がら",
+   "n_variant": 9,
+   "standard": "から",
+   "n_standard": 904
+  },
+  {
+   "variant": "めで",
+   "n_variant": 8,
+   "standard": "めて",
+   "n_standard": 392
+  },
+  {
+   "variant": "てば",
+   "n_variant": 1,
+   "standard": "では",
+   "n_standard": 365
+  },
+  {
+   "variant": "れで",
+   "n_variant": 7,
+   "standard": "れて",
+   "n_standard": 359
+  },
+  {
+   "variant": "ぞれ",
+   "n_variant": 2,
+   "standard": "それ",
+   "n_standard": 354
+  },
+  {
+   "variant": "じく",
+   "n_variant": 4,
+   "standard": "しく",
+   "n_standard": 339
+  },
+  {
+   "variant": "ぎな",
+   "n_variant": 1,
+   "standard": "きな",
+   "n_standard": 314
+  },
+  {
+   "variant": "のごと",
+   "n_variant": 1,
+   "standard": "のこと",
+   "n_standard": 311
+  },
+  {
+   "variant": "ばあ",
+   "n_variant": 1,
+   "standard": "はぁ",
+   "n_standard": 299
+  },
+  {
+   "variant": "とが",
+   "n_variant": 1,
+   "standard": "とか",
+   "n_standard": 295
+  },
+  {
+   "variant": "ずる",
+   "n_variant": 4,
+   "standard": "する",
+   "n_standard": 283
+  },
+  {
+   "variant": "じだ",
+   "n_variant": 1,
+   "standard": "した",
+   "n_standard": 257
+  },
+  {
+   "variant": "じた",
+   "n_variant": 3,
+   "standard": "した",
+   "n_standard": 257
+  },
+  {
+   "variant": "しだ",
+   "n_variant": 3,
+   "standard": "した",
+   "n_standard": 257
+  },
+  {
+   "variant": "ごう",
+   "n_variant": 3,
+   "standard": "こう",
+   "n_standard": 234
+  },
+  {
+   "variant": "くで",
+   "n_variant": 18,
+   "standard": "くて",
+   "n_standard": 222
+  },
+  {
+   "variant": "けで",
+   "n_variant": 5,
+   "standard": "けて",
+   "n_standard": 191
+  },
+  {
+   "variant": "おちんぼ",
+   "n_variant": 10,
+   "standard": "おちんぽ",
+   "n_standard": 176
+  },
+  {
+   "variant": "でる",
+   "n_variant": 3,
+   "standard": "てる",
+   "n_standard": 169
+  },
+  {
+   "variant": "ごご",
+   "n_variant": 1,
+   "standard": "ここ",
+   "n_standard": 163
+  },
+  {
+   "variant": "ごこ",
+   "n_variant": 1,
+   "standard": "ここ",
+   "n_standard": 163
+  },
+  {
+   "variant": "しでください",
+   "n_variant": 1,
+   "standard": "してください",
+   "n_standard": 161
+  },
+  {
+   "variant": "じてください",
+   "n_variant": 11,
+   "standard": "してください",
+   "n_standard": 161
+  },
+  {
+   "variant": "だげ",
+   "n_variant": 1,
+   "standard": "だけ",
+   "n_standard": 151
+  },
+  {
+   "variant": "ばお",
+   "n_variant": 1,
+   "standard": "はお",
+   "n_standard": 148
+  },
+  {
+   "variant": "じや",
+   "n_variant": 1,
+   "standard": "じゃ",
+   "n_standard": 141
+  },
+  {
+   "variant": "がな",
+   "n_variant": 1,
+   "standard": "かな",
+   "n_standard": 138
+  },
+  {
+   "variant": "ちんぼ",
+   "n_variant": 9,
+   "standard": "ちんぽ",
+   "n_standard": 132
+  },
+  {
+   "variant": "がに",
+   "n_variant": 1,
+   "standard": "かに",
+   "n_standard": 122
+  },
+  {
+   "variant": "つでも",
+   "n_variant": 5,
+   "standard": "っても",
+   "n_standard": 119
+  },
+  {
+   "variant": "だり",
+   "n_variant": 2,
+   "standard": "たり",
+   "n_standard": 112
+  },
+  {
+   "variant": "げと",
+   "n_variant": 1,
+   "standard": "けど",
+   "n_standard": 105
+  },
+  {
+   "variant": "おまんごの",
+   "n_variant": 4,
+   "standard": "おまんこの",
+   "n_standard": 103
+  },
+  {
+   "variant": "だじ",
+   "n_variant": 1,
+   "standard": "だし",
+   "n_standard": 103
+  },
+  {
+   "variant": "ぎだよ",
+   "n_variant": 2,
+   "standard": "きだよ",
+   "n_standard": 100
+  },
+  {
+   "variant": "いでる",
+   "n_variant": 5,
+   "standard": "いてる",
+   "n_standard": 91
+  },
+  {
+   "variant": "ぜて",
+   "n_variant": 5,
+   "standard": "せて",
+   "n_standard": 89
+  },
+  {
+   "variant": "つぼ",
+   "n_variant": 1,
+   "standard": "っぽ",
+   "n_standard": 84
+  },
+  {
+   "variant": "たけど",
+   "n_variant": 3,
+   "standard": "だけど",
+   "n_standard": 83
+  },
+  {
+   "variant": "ども",
+   "n_variant": 4,
+   "standard": "とも",
+   "n_standard": 79
+  },
+  {
+   "variant": "がい",
+   "n_variant": 2,
+   "standard": "かい",
+   "n_standard": 76
+  },
+  {
+   "variant": "てで",
+   "n_variant": 4,
+   "standard": "てて",
+   "n_standard": 74
+  },
+  {
+   "variant": "ぎに",
+   "n_variant": 1,
+   "standard": "きに",
+   "n_standard": 74
+  },
+  {
+   "variant": "じますね",
+   "n_variant": 1,
+   "standard": "しますね",
+   "n_standard": 74
+  },
+  {
+   "variant": "ギス",
+   "n_variant": 2,
+   "standard": "キス",
+   "n_standard": 73
+  },
+  {
+   "variant": "ぎます",
+   "n_variant": 3,
+   "standard": "きます",
+   "n_standard": 73
+  },
+  {
+   "variant": "どでも",
+   "n_variant": 1,
+   "standard": "とても",
+   "n_standard": 71
+  },
+  {
+   "variant": "てが",
+   "n_variant": 1,
+   "standard": "てか",
+   "n_standard": 70
+  },
+  {
+   "variant": "でか",
+   "n_variant": 4,
+   "standard": "てか",
+   "n_standard": 70
+  },
+  {
+   "variant": "のおまんご",
+   "n_variant": 6,
+   "standard": "のおまんこ",
+   "n_standard": 68
+  },
+  {
+   "variant": "じました",
+   "n_variant": 2,
+   "standard": "しました",
+   "n_standard": 61
+  },
+  {
+   "variant": "いつで",
+   "n_variant": 1,
+   "standard": "いって",
+   "n_standard": 60
+  },
+  {
+   "variant": "きぐ",
+   "n_variant": 1,
+   "standard": "きく",
+   "n_standard": 58
+  },
+  {
+   "variant": "がも",
+   "n_variant": 2,
+   "standard": "かも",
+   "n_standard": 56
+  },
+  {
+   "variant": "びな",
+   "n_variant": 1,
+   "standard": "ひな",
+   "n_standard": 54
+  },
+  {
+   "variant": "じでも",
+   "n_variant": 1,
+   "standard": "しても",
+   "n_standard": 52
+  },
+  {
+   "variant": "じても",
+   "n_variant": 3,
+   "standard": "しても",
+   "n_standard": 52
+  },
+  {
+   "variant": "まんごの",
+   "n_variant": 5,
+   "standard": "まんこの",
+   "n_standard": 51
+  },
+  {
+   "variant": "うど",
+   "n_variant": 3,
+   "standard": "うと",
+   "n_standard": 51
+  }
+ ],
+ "counts": {
+  "もう": 1623,
+  "もぅ": 1,
+  "もお": 90,
+  "ちんぽ": 132,
+  "ちんぼ": 9
+ }
+}

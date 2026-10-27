@@ -48,7 +48,8 @@ import argparse
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ERRATA_PATH = os.path.join(ROOT, ".workbuddy", "style", "asr_errata.json")
+import styleloc  # noqa: E402
+ERRATA_PATH = styleloc.table("asr_errata.json")
 # 16 部成品（draft 根）+ 106 部学习语料（draft/learning）。
 CORPUS_ROOTS = [os.path.join(ROOT, ".workbuddy", "draft"),
                 os.path.join(ROOT, ".workbuddy", "draft", "learning")]

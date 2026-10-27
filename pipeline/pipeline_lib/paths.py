@@ -7,7 +7,12 @@ import sys
 ROOT = os.path.abspath(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 SCRIPTS = os.path.join(ROOT, "scripts")
-STYLE = os.environ.get("KIKOERU_STYLE", os.path.join(ROOT, ".workbuddy", "style"))
+# 风格库/知识表：环境变量 → 本地真实库（含平行语料，不入库）→ 公开预设 presets/
+# 这层回落是给「刚 clone 下来、还没有自己语料」的人用的：能跑，效果走规则与词典。
+_PRESETS = os.path.join(ROOT, "presets")
+_LOCAL_STYLE = os.path.join(ROOT, ".workbuddy", "style")
+STYLE = (os.environ.get("KIKOERU_STYLE")
+         or (_LOCAL_STYLE if os.path.isdir(_LOCAL_STYLE) else _PRESETS))
 DRAFT = os.path.join(ROOT, ".workbuddy", "draft")
 PROD = os.environ.get("KIKOERU_PROD", os.path.join(ROOT, "kikoerusubtitle"))
 LOCKS = os.path.join(ROOT, ".workbuddy", "locks")

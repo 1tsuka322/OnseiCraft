@@ -29,8 +29,9 @@ import subprocess
 
 PY = sys.executable
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.environ.get("KIKOERU_ROOT", r"$KIKOERU_ROOT")
-DEFAULT_STYLE = os.path.join(ROOT, ".workbuddy", "style")
+ROOT = os.environ.get("KIKOERU_ROOT", os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import styleloc  # noqa: E402
+DEFAULT_STYLE = styleloc.style_dir()
 
 
 def run(args, title):

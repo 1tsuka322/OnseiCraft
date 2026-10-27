@@ -62,7 +62,7 @@ API = "http://127.0.0.1:8080/v1/chat/completions"
 # 重跑 polish 时按 key 覆写 → 人工修正不再被批量重跑冲掉。
 # key 漂移（显示层切分变化导致 ts 移位）时回退按 old 原文认领。
 # KIKOERU_NO_LOCKS=1 可关（A/B 对照用）。
-LOCKS_DIR = os.environ.get("KIKOERU_LOCKS", r"$KIKOERU_ROOT\.workbuddy\locks")
+LOCKS_DIR = os.environ.get("KIKOERU_LOCKS", os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "locks"))
 LOCK_MAP = {}    # (file, ts) -> 锁定文本（主 key）
 LOCK_OLD = {}    # (file, old_text) -> 锁定文本（历史兜底）
 LOCK_RAW = {}    # (file, ts) -> {zh, ja}（喂给 lock_match）
@@ -136,7 +136,7 @@ def apply_lock(fn, ts, text, ja=""):
 # ⚠️ 锁行在写盘时覆写（apply_lock），与缓存正交；--cleanup-only 不过 LLM，不走缓存。
 # `--force` / `KIKOERU_NO_CACHE=1` 可全量重跑（缓存仍会按新结果更新）。
 CACHE_DIR = os.environ.get("KIKOERU_CACHE_DIR",
-                           r"$KIKOERU_ROOT\.workbuddy\cache\polish_sig")
+                           os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".workbuddy", "cache", "polish_sig"))
 _SYS_MODE = ["strong"]      # 当前 system_mode，cue_sig 用（main 里同步）
 
 
@@ -165,7 +165,9 @@ def cue_sig(src, ln, old, system, mem=""):
 _ENGINE_NAME = {"sakura": "Sakura-7B-Qwen2.5-v1.0", "qwen3": "Qwen3-8B"}.get(
     os.environ.get("KIKOERU_ENGINE", "qwen"), "Qwen2.5-7B")
 MODEL_TAG = "faster-whisper large-v3 + %s (人工风格对齐)" % _ENGINE_NAME
-DEFAULT_STYLE = os.environ.get("KIKOERU_STYLE", r"$KIKOERU_ROOT\.workbuddy\style")
+# 风格库位置统一由 styleloc 解析：环境变量 → .workbuddy/style → presets（公开预设）
+import styleloc  # noqa: E402
+DEFAULT_STYLE = styleloc.style_dir()
 
 # 批次大小。2026-10-14 从 10 降到 5（GPT 第四轮 Q1-c）：
 # 批越大，7B 越容易把上一批内容搬进这批，而 `parse_reply` 只保行数不保对位，

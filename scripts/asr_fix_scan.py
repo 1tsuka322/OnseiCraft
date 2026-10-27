@@ -133,7 +133,8 @@ def load_errata():
     错字表是唯一能覆盖「两版同错」的确定性来源，且每条都有人工/双源背书。
     """
     if _ERRATA[0] is None:
-        p = os.path.join(ROOT, ".workbuddy/style/asr_errata.json")
+        import styleloc  # noqa: E402
+        p = styleloc.table("asr_errata.json")
         _ERRATA[0] = json.load(open(p, encoding="utf-8"))["entries"] if os.path.exists(p) else []
     return _ERRATA[0]
 
@@ -149,7 +150,7 @@ def load_do_not_change():
     任何工具都不得把其中一个当错字改掉。用途：errata 应用前过滤 + 候选生成时跳过。
     """
     if _DNC[0] is None:
-        p = os.path.join(ROOT, ".workbuddy/style/do_not_change.json")
+        p = styleloc.table("do_not_change.json")
         try:
             d = json.load(open(p, encoding="utf-8"))
             _DNC[0] = {frozenset((x["a"], x["b"])) for x in (d.get("pairs") or [])}
@@ -580,7 +581,7 @@ def auto_apply_green(draft, src_dir, fix_dir, other_ver="asr"):
 
 
 def load_all_ja():
-    p = os.path.join(ROOT, ".workbuddy/style/parallel.json")
+    p = styleloc.table("parallel.json")
     if not os.path.exists(p):
         return None
     return "\n".join((x.get("ja") or "") for x in

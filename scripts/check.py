@@ -22,7 +22,9 @@ except ImportError:
 JPN = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff]")
 NUM = re.compile(r"^\s*\d+\s*[|｜]")
 TS = re.compile(r"^\[(\d+):([\d.]+)\]")
-DEFAULT_STYLE = os.environ.get("KIKOERU_STYLE", r"$KIKOERU_ROOT\.workbuddy\style")
+# 风格库位置统一由 styleloc 解析：环境变量 → .workbuddy/style → presets（公开预设）
+import styleloc  # noqa: E402
+DEFAULT_STYLE = styleloc.style_dir()
 
 
 def main():

@@ -31,6 +31,11 @@ jobs:
       - name: Empty-subtitle gate selftest (4 cases)
         run: python scripts/empty_check.py --selftest
 
+      # 回归门禁在「无数据」下必须全过（数据依赖用例自动跳过）。
+      # 这条能防止有人把「缺数据」写回成「判失败」——那会让协作者 clone 下来一片红。
+      - name: Regression gate (must pass without any data)
+        run: python scripts/test_regressions.py
+
       - name: Byte-compile everything
         run: python -m compileall -q pipeline scripts
 
