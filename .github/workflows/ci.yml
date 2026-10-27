@@ -36,6 +36,14 @@ jobs:
       - name: Regression gate (must pass without any data)
         run: python scripts/test_regressions.py
 
+      # 错字表门禁：无语料时应报 SKIP 并 exit 0
+      - name: Errata gate (skips without corpus)
+        run: python scripts/errata_audit.py --test
+
+      # 自带的样例必须能通过自己的检查器（否则发出去就是个坏例子）
+      - name: Shipped example passes our own checker
+        run: python scripts/check.py examples
+
       - name: Byte-compile everything
         run: python -m compileall -q pipeline scripts
 

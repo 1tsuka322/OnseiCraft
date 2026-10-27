@@ -188,11 +188,21 @@ def cmd_guard_samples(ja, n):
 
 # ---------------------------------------------------------------- --test
 def cmd_test():
-    """门禁：期望值来自 2026-10-26 手工基线 + T7b 用户裁决；对不上=口径错了，别改期望值。"""
+    """门禁：期望值来自 2026-10-26 手工基线 + T7b 用户裁决；对不上=口径错了，别改期望值。
+
+    ⚠️ 这些期望值是**对着具体语料**数出来的（n_hits / n_works / wrong_cf）。
+    公开仓库不含语料，clone 下来必然一条都对不上 —— 所以「语料为空」时**直接跳过**，
+    报 SKIP 并返回 0。否则协作者一跑就是 16/37，会以为项目坏了。
+    """
     entries = load_errata()
     by_ja = {e["ja"]: e for e in entries}
     queries = {e["ja"] for e in entries} | {e["fix"] for e in entries}
     stats, n_seg = gather(queries)
+    if n_seg == 0:
+        print("⚠️ SKIP：没有找到 ASR 语料（.workbuddy/draft），errata 的语料断言无法执行。")
+        print("   公开仓库不含语料，这是正常状态；有语料时会跑完整 %d 条断言。"
+              % (len(entries) * 3))
+        return 0
 
     def g(ja):
         st = stats.get(ja) or {"hits": set(), "works": set(), "cf": 0, "samples": []}
