@@ -1371,18 +1371,27 @@ def main():
     # 「N/N 通过」即失败；失败断言名由 errata_audit 自己打到 stdout，转贴前几条。
     import subprocess
     _ea = os.path.join(os.path.dirname(os.path.abspath(__file__)), "errata_audit.py")
-    _r = subprocess.run([sys.executable, _ea, "--test"],
-                        capture_output=True, text=True, encoding="utf-8", errors="replace")
-    _n_ok = _n_all = -1
-    for _l in (_r.stdout or "").splitlines():
-        m = re.match(r"\s*(\d+)/(\d+) 通过", _l)
-        if m:
-            _n_ok, _n_all = int(m.group(1)), int(m.group(2))
-    bad3n = [] if (_r.returncode == 0 and _n_ok == _n_all and _n_all > 0) \
-        else [("errata_audit", [l for l in (_r.stdout or "").splitlines() if "❌" in l][:3]
-               or (_r.stderr or "").strip()[-200:])]
-    print("   %d/%d 通过 %s" % (_n_ok if _n_ok >= 0 else 0, _n_all if _n_all >= 0 else 0,
-                              "✅" if not bad3n else "❌ " + str(bad3n)))
+    # ⚠️ 依赖错字表（.workbuddy/style/asr_errata.json）。公开仓库不含数据 →
+    # 表不存在就**跳过**，不判失败（否则协作者 clone 下来一片红）。
+    _et = os.path.join(ROOT, ".workbuddy", "style", "asr_errata.json")
+    if not os.path.exists(_et):
+        SKIPPED.append(("errata_audit", "无错字表", "asr_errata.json 不存在"))
+        print("   跳过（无错字表）")
+        bad3n = []
+        _n_ok = _n_all = 0
+    else:
+        _r = subprocess.run([sys.executable, _ea, "--test"],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        _n_ok = _n_all = -1
+        for _l in (_r.stdout or "").splitlines():
+            m = re.match(r"\s*(\d+)/(\d+) 通过", _l)
+            if m:
+                _n_ok, _n_all = int(m.group(1)), int(m.group(2))
+        bad3n = [] if (_r.returncode == 0 and _n_ok == _n_all and _n_all > 0) \
+            else [("errata_audit", [l for l in (_r.stdout or "").splitlines() if "❌" in l][:3]
+                   or (_r.stderr or "").strip()[-200:])]
+        print("   %d/%d 通过 %s" % (_n_ok if _n_ok >= 0 else 0, _n_all if _n_all >= 0 else 0,
+                                  "✅" if not bad3n else "❌ " + str(bad3n)))
 
     print("\n=== 3o. repair_overlay 状态机（2026-10-26 T8）===")
     bad3o = check_repair_overlay(verbose)
