@@ -2575,6 +2575,14 @@ def main():
             for idx, (ln, zh) in enumerate(zip(lines, results)):
                 zh = re.sub(r"\s+", " ", (zh or "")).strip()
                 zh = cleanup(fix_particle(zh, ln["text"]), stats)
+                # 单字译文兜底（2026-10-28 R154）：`はぁ…` 被模型译成单字「哈」，
+                # 中文里单写一个「哈」像冷笑。日文是已知纯拟声词时，用 ZH_MAP 的
+                # 确定性值（`はぁ`→「哈啊」）覆盖。只在「译文短到只剩一个字」时动手，
+                # 不会误伤正常句子。
+                if MASK is not None and len(zh or "") <= 1:
+                    _r = MASK.pure_nonlexical(ln["text"])
+                    if _r and len(_r) > len(zh):
+                        zh = _r
                 # 说话人名泄漏（2026-10-22 RJ9000014 实录）：prompt 每行带「人：白/甘」，
                 # 短句/诗句时模型直接把人名当译文吐回来（实测 74 行整行只剩「白」「甘」），
                 # 或把人名缀在译文前（28 行，如「白的思考变得漫无目的。」）。

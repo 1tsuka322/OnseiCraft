@@ -394,6 +394,8 @@ def _residue(s):
 SAKURA_MAX_RATIO = 2.5     # 译文字符数 / 日文字符数 的上限
 SAKURA_LOOP = 4            # 同一 3 字片段连续出现次数上限
 SAKURA_FALLBACK = "…"
+# 短行阈值：日文去掉标点后 < 这么多字，就单独成块翻（防下一行开头渗进来）
+SHORT_JA = 8
 HALLU = {"latin": 0, "loop": 0, "ratio": 0, "masked": 0, "retried": 0, "left": 0}
 _NONLEX = re.compile(r"^[\u3040-\u30ff\s、。，,.!?！？…‥~～ー〜っ]+$")
 _STRIP = re.compile(r"[\s、。，,.!?！？…‥~～ー〜]")
@@ -567,8 +569,45 @@ def _sakura_retry_one(ja):
     return cand, (not why)
 
 
+def _split_short(block):
+    """把「很短的句子」从块里拆出来，各自单独成块。
+
+    为什么：Sakura 是**纯翻译模型**，block 里给 N 行、不带编号，
+    短行（`おやすみなさい`、`ん?`）的边界它守不住，会把下一行的开头渗进来。
+    实测 RJ1058739：`295.56 おやすみなさい` 被译成「晚安。不行」——
+    「不行」来自下一段 `ダメ、先生の見回りかも`；625 行里 2 处。
+
+    只拆短的，长的仍成块（保住上下文，不然调用次数暴涨）。
+    """
+    out, cur = [], []
+    for item in block:
+        ja = item[1] or ""
+        if len(_STRIP_JA.sub("", ja)) < SHORT_JA:
+            if cur:
+                out.append(cur)
+                cur = []
+            out.append([item])
+        else:
+            cur.append(item)
+    if cur:
+        out.append(cur)
+    return out
+
+
 def translate_block(block, prev_ctx):
     """prev_ctx: 前几句的「日：… 译：…」，用来保持人称/称呼/口吻连贯。"""
+    # 短行隔离（见 _split_short）：只在混排时才拆，全短或全长都不动
+    if len(block) > 1 and ENGINE == "sakura":
+        parts = _split_short(block)
+        if len(parts) > 1:
+            merged, last = [], ""
+            for part in parts:
+                r, rep = translate_block(part, prev_ctx)
+                if r is None:
+                    return None, rep
+                merged.extend(r)
+                last = rep or last
+            return merged, last
     if ENGINE == "hymt":
         # HY-MT 1.5：翻译专用模型，**逐句**翻（它不做编号列表，也不吃系统提示里的风格规则）。
         # 这里只做「初译」——风格/主语补全交给后面的 polish（Qwen + 10.6 万句对风格库）。

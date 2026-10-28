@@ -34,7 +34,14 @@ CHUNK_OV = float(os.environ.get("FW_CHUNK_OV", 5))    # 块间重叠
 # 长轨保护（2026-10-21，移植 WhisperJAV 对 #394「长音频停输出」的防御）：
 # 单轨超过此秒数 → 分块识别且**每块重建一次识别器**（默认 20 分钟）。
 # 我们的 35–50 分钟长轨暂未复现该故障，但用户判断会遇到 → 默认开启。
-RELOAD_SEC = float(os.environ.get("KIKOERU_ASR_RELOAD_SEC", "1200"))
+# ⚠️ 2026-10-28 R154：原来这里是 1200（20 分钟），而且它**同时被当成「分块大小」**。
+#    于是一条 21 分钟的轨 → 切出一个 20 分钟的块 → 单块的激活值就把 8GB 卡打满
+#    （实测显存 7859/8192、GPU 100%、45 分钟跑不完一块）。
+#    「重载间隔」和「分块大小」是两件事，必须分开：
+#      · RELOAD_SEC：多久重建一次识别器（防解码状态腐坏），默认 40 分钟
+#      · LONG_CHUNK：长轨按多大切块（控激活值），默认 10 分钟
+RELOAD_SEC = float(os.environ.get("KIKOERU_ASR_RELOAD_SEC", "2400"))
+LONG_CHUNK = float(os.environ.get("KIKOERU_ASR_LONG_CHUNK", "600"))
 RELOAD_OV = 2.0
 NO_SPEECH = float(os.environ.get("FW_NO_SPEECH", 0.85))
 # ⚠️ 2026-10-19 实测（P2-6）：**只看 nsp 的硬阈值会误杀真实台词**。
@@ -253,7 +260,8 @@ def probe_duration(path):
         return -1
 
 
-def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", factory=None):
+def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", factory=None,
+                       holder=None):
     r"""分块独立识别，再合并。**默认不使用**，保留仅作对照实验用。
 
     曾经以为分块更好（覆盖率 66% -> 75%），但用 RJ1267421 的人工字幕做标准答案
@@ -271,11 +279,17 @@ def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", facto
     out, pos = [], 0.0
     while pos < total - 1.0:
         if factory is not None:
-            # 每块重建识别器：长轨（>RELOAD_SEC）下防止解码状态腐坏导致后半段停输出
-            # ⚠️ 必须先释放旧模型再建新的，否则 VRAM 逐块累积（实测 60s 块 × 20 次会拖死）
+            # 每块重建识别器：长轨（>RELOAD_SEC）下防止解码状态腐坏导致后半段停输出。
+            # ⚠️⚠️ 2026-10-28 R154 修：原来 `model = None` 只清掉**本函数的局部引用**，
+            #    调用方那个 `model` 还活着 → 旧模型根本没释放 → 每块再建一个，
+            #    VRAM 逐块累积。实测 RJ1623028（21 分钟轨 → 2 块）：显存打到 7859/8192，
+            #    GPU 100% 但 45 分钟跑不完一块（模型被挤到反复换入换出）。
+            #    改成用 holder 传递引用，重建时把旧对象彻底丢掉。
             try:
-                model = None
                 import gc as _gc
+                if holder is not None:
+                    holder[0] = None
+                model = None
                 _gc.collect()
                 try:
                     import torch as _torch
@@ -283,6 +297,8 @@ def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", facto
                 except Exception:
                     pass
                 model = factory()
+                if holder is not None:
+                    holder[0] = model
             except Exception as e:
                 print("    [重载失败，沿用旧模型] %s" % str(e)[:100], flush=True)
         seg = pcm[int(pos * 16000): int(min(pos + chunk, total) * 16000)]
@@ -429,11 +445,12 @@ def main():
             else:
                 _mk = (lambda: WhisperModel(MODEL, device=a.device, compute_type=a.compute)) \
                     if _long else None
+                _holder = [model]
                 data, dur = transcribe_chunked(
                     model, path,
-                    RELOAD_SEC if _long else a.chunk,
+                    (min(RELOAD_SEC, LONG_CHUNK) if _long else a.chunk),
                     RELOAD_OV if _long else a.overlap,
-                    name=name, factory=_mk)
+                    name=name, factory=_mk, holder=_holder)
         except Exception as e:
             print("    [失败] %s: %s" % (name, str(e)[:200]), flush=True)
             with open(out_path, "w", encoding="utf-8") as f:

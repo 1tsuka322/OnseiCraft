@@ -348,12 +348,17 @@ def validate(pid):
         same = [e for e in tbl["entries"] if e.get("ja") == ja]
         ck("表内无同形冲突", not same or all(e.get("fix") == fix for e in same),
            "已存在 %d 条同形条目" % len(same))
+        # 链式替换只对**会自动落地的条目**才成立：mode=review 的规则永不自动改，
+        # 它出现在 fix 里不会引发二次改写。以前没区分，导致
+        # 「反行動→班行動」被一条 review 的「行動→公道」误拦（2026-10-28 实测）。
         chain = [e["ja"] for e in tbl["entries"]
-                 if e.get("ja") and e["ja"] != ja and e["ja"] in (fix or "")]
+                 if e.get("ja") and e["ja"] != ja and e["ja"] in (fix or "")
+                 and (e.get("mode") or "auto") != "review"]
         ck("无链式替换", not chain, chain)
         overlap = [e["ja"] for e in tbl["entries"]
                    if e.get("ja") and e["ja"] != ja and ja
                    and (ja in e["ja"] or e["ja"] in ja)
+                   and (e.get("mode") or "auto") != "review"
                    and e["ja"] not in (p.get("overlap_ok") or [])]
         ck("无未声明的重叠", not overlap, overlap)
 
