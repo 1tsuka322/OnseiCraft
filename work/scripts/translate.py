@@ -371,6 +371,104 @@ def _residue(s):
     return ""
 
 
+# ---------------------------------------------------------------- 方案 A
+# Sakura 幻觉兜底（2026-10-28 R154）。
+#
+# 为什么必须有：Sakura 是「整段文本」微调出来的，遇到**信息熵极低**的输入
+# （纯喘息/拟声，如 `んっ…はぁ…ちゅっ…`）会触发基座幻觉 —— 实测三种：
+#   ① 整句吐英文：`哈啊…好痛啊哈啊… Huh,Ah,no, sorry!`
+#   ② 复读退化：同一分句吐两遍（`如果你赢了…如果你赢了…`）
+#   ③ 超长注水：译文长度远超日文（`2.5×` 以上基本是脑补）
+# 而且这些**过不了 A8 遮蔽**：`--cleanup-only` 下 mask 被跳过，垃圾原样进成品
+# （轨 04 实测 9 处拉丁里 5 处是这种，`Holmes Meanwhile in came off` 都进了 LRC）。
+#
+# 处理分两路（对应两种病因）：
+#   · 日文侧是**非词汇音**（全假名/拖音）→ 这一行本来就该是「…」，直接给兜底文本，
+#     不再问模型（问了也是猜）；
+#   · 日文侧有实词 → 单行重问一次（温度降到 0），还坏就兜底 + 记 review。
+SAKURA_MAX_RATIO = 2.5     # 译文字符数 / 日文字符数 的上限
+SAKURA_LOOP = 4            # 同一 3 字片段连续出现次数上限
+SAKURA_FALLBACK = "…"
+HALLU = {"latin": 0, "loop": 0, "ratio": 0, "masked": 0, "retried": 0, "left": 0}
+_NONLEX = re.compile(r"^[\u3040-\u30ff\s、。，,.!?！？…‥~～ー〜っ]+$")
+_STRIP = re.compile(r"[\s、。，,.!?！？…‥~～ー〜]")
+_SRC_LATIN = re.compile(r"[A-Za-z]{3,}")
+# 语气/拟声字：只有这些字连续重复才算「复读退化」
+FILLER_CHARS = set("嗯啊哈呜唔呼噢哦呃唉呀哎咦诶嘿嘛呐")
+
+
+def _nonlexical(ja):
+    """日文侧是不是「非词汇音」：只有假名/拖音/标点，没有汉字也没有实词假名。
+
+    ⚠️ 故意不用 mask_nonlexical 的分类器：那条链路依赖 models/ 里的小模型，
+    而 translate 阶段不该为此多加载一个模型（8GB 显存要留给 LLM）。
+    这里只要判「有没有实词」，全假名 + 无汉字就够——误判的代价只是把一句
+    本来能译的短句写成「…」，比留下英文幻觉轻得多。
+    """
+    t = (ja or "").strip()
+    if not t or re.search(r"[\u4e00-\u9fff]", t):
+        return False
+    return bool(_NONLEX.match(t))
+
+
+def _loop4(zh):
+    """复读退化：**语气/拟声字**连续 ≥5 次，或 6 字以上片段出现两遍。
+
+    为什么只认语气字：`不行不行不行不行不行`（ダメダメダメ）是**合法**的强调，
+    换成「…」反而丢信息；而 `嗯嗯嗯嗯嗯`（んっ…はぁ…）是退化。两者字面都是
+    「同一片段重复」，只能靠字本身区分。
+    第二种是实测最坑的：`如果你赢了，我就会对你言听计从，如果你赢了，…`
+    —— 读起来像人话，比例检测（2.0 < 2.5）也抓不到，但整句是错的。
+    """
+    s = _STRIP.sub("", zh or "")
+    if len(s) < 5:
+        return False
+    for ch in set(s):
+        if ch in FILLER_CHARS and (ch * 5) in s:
+            return True
+    for i in range(len(s) - 5):
+        frag = s[i:i + 6]
+        if s.count(frag) >= 2:
+            return True
+    return False
+
+
+def _sakura_bad(zh, ja):
+    """返回 (原因, 是否非词汇音)。原因空 = 干净。"""
+    # 逐字母退化：`K，O，S，h，h，a，n，d…`（Sakura 遇到罗马音垃圾时会把字母一个个吐出来）。
+    # ⚠️ 这种单字母不成 `[A-Za-z]{3,}`，_residue 抓不到，必须单独判。
+    if re.search(r"(?:[A-Za-z]，){4,}", zh or ""):
+        return "latin:letters", _nonlexical(ja)
+    why = _residue(zh)
+    if why:
+        return why, _nonlexical(ja)
+    jn = len(_STRIP.sub("", ja or ""))
+    zn = len(_STRIP.sub("", zh or ""))
+    if jn >= 5 and zn > SAKURA_MAX_RATIO * jn:
+        return "ratio:%d/%d" % (zn, jn), _nonlexical(ja)
+    if _loop4(zh):
+        return "loop", _nonlexical(ja)
+    return "", False
+
+
+def _sakura_retry_one(ja):
+    """单行重问（温度 0）。返回 (译文, 是否干净)。"""
+    from polish import strip_think   # 与 hymt 分支同样按需导入（polish 是重模块）
+    HALLU["retried"] += 1
+    try:
+        reply = call_llm([{"role": "system", "content": SAKURA_SYSTEM},
+                          {"role": "user", "content": "将下面的日文文本翻译成中文：\n" + ja}],
+                         temperature=0.0, top_p=SAKURA_TOP_P, max_tokens=200)
+    except Exception:
+        return "", False
+    rows = [x.strip() for x in strip_think(reply).splitlines() if x.strip()]
+    if not rows:
+        return "", False
+    cand = _clean_cell(rows[0])
+    why, _nl = _sakura_bad(cand, ja)
+    return cand, (not why)
+
+
 def translate_block(block, prev_ctx):
     """prev_ctx: 前几句的「日：… 译：…」，用来保持人称/称呼/口吻连贯。"""
     if ENGINE == "hymt":
@@ -418,7 +516,38 @@ def translate_block(block, prev_ctx):
             res = _parse_plain(reply, len(block))
             if (res and not any(any(x in t for x in REFUSE) for t in res)
                     and not any(_has_kana(t) for t in res)):
-                return res, reply
+                # 方案 A：逐行兜底（见 _sakura_bad 的注释）
+                out = []
+                for (_i, ja), zh in zip(block, res):
+                    # 源语本身就是垃圾（Whisper 在非语音段幻觉出英文，如
+                    # `はぁ…ヒリヒリはぁ… Huh, Ah, no, sorry!`）——这时候**重问没用**，
+                    # 因为模型翻译得没错，是输入错了。直接给拟声兜底。
+                    # 实测轨 04：7 处含拉丁的 ASR 行里 5 处是这种。
+                    if _SRC_LATIN.search(ja or ""):
+                        HALLU["src"] = HALLU.get("src", 0) + 1
+                        HALLU["masked"] += 1
+                        out.append(SAKURA_FALLBACK)
+                        continue
+                    why, nonlex = _sakura_bad(zh, ja)
+                    if not why:
+                        out.append(zh)
+                        continue
+                    kind = why.split(":")[0]
+                    HALLU[kind] = HALLU.get(kind, 0) + 1
+                    if nonlex:
+                        # 纯气声/拟声：本来就该是「…」，不再问模型
+                        HALLU["masked"] += 1
+                        out.append(SAKURA_FALLBACK)
+                        continue
+                    cand, ok = _sakura_retry_one(ja)
+                    if ok:
+                        out.append(cand)
+                    else:
+                        HALLU["left"] += 1
+                        print("    ⚠️ Sakura 幻觉(%s)未救回：%s -> %s"
+                              % (why, ja[:22], (cand or zh)[:30]), flush=True)
+                        out.append(SAKURA_FALLBACK)
+                return out, reply
         return None, reply
 
     body = "\n".join("%d|%s" % (i, t) for i, t in block)
@@ -507,6 +636,12 @@ def main():
         if RESIDUE["retried"]:
             print("    残留重抽 %d 次；仍残留 英文 %d / 假名 %d"
                   % (RESIDUE["retried"], RESIDUE["latin"], RESIDUE["kana"]), flush=True)
+        if any(HALLU.values()):
+            print("    Sakura 幻觉兜底：拉丁 %d / 复读 %d / 注水 %d → 拟声段直接给「…」%d，"
+                  "重问救回 %d，未救回 %d"
+                  % (HALLU["latin"], HALLU["loop"], HALLU["ratio"],
+                     HALLU["masked"], HALLU["retried"] - HALLU["left"], HALLU["left"]),
+                  flush=True)
 
         out = os.path.join(a.out_dir, src + ".lrc")
         with open(out, "w", encoding="utf-8") as f:
