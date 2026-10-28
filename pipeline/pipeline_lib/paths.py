@@ -49,6 +49,10 @@ DEFAULTS = {
     "device": "cuda",
     "compute": "float16",
     "engine": "hymt",
+    # 04 润色用的模型。**必须与初译分开**：初译是纯翻译模型（HY-MT），
+    # 润色要「20 条规则 + 术语表 + 编号协议」，只有聊天模型（Qwen）做得来。
+    # 2026-10-28 之前两个阶段共用同一个服务，实际跑的一直是 Qwen（见 R153）。
+    "polish_engine": "q5",
     # 交付的 16 部是 cue 模式做的（spacer 只在 is_cue 分支产生，成品有 304 个 spacer）。
     # 0=显示行 / 1=语义 cue —— 默认必须与交付口径一致，否则行数/清屏行全对不上。
     "cue_pipeline": 1,

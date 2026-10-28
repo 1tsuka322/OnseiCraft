@@ -136,6 +136,45 @@ def stop():
     print("已停止" if not alive() else "仍在运行")
 
 
+def loaded_model():
+    """8080 上**真正**加载的模型路径；拿不到返回 ""。"""
+    try:
+        r = json.loads(urllib.request.urlopen(API + "/props", timeout=8).read())
+        return r.get("model_path") or r.get("model_alias") or ""
+    except Exception:
+        return ""
+
+
+def ensure(key=None):
+    """按引擎对齐模型。**这才是管线该调的命令。**
+
+    2026-10-28 事故（R153）：`_ensure_server` 调的是 `serve.py start` 且不带模型，
+    start() 就按显存自动选了 q5（Qwen2.5-7B）；而 translate.py 因为
+    KIKOERU_ENGINE=hymt 走的是 HY-MT 分支（裸指令、逐句、temp0.7）——
+    等于「拿 HY-MT 的提示词去问 Qwen2.5」。实测同一句日文：HY-MT 英文 0/5，
+    Qwen2.5 英文 5/5，还夹带拒答、元话语、日文残留。
+    alive() 只探端口，所以「服务已在运行」把上一个错模型原样留下了。
+    """
+    if key not in MODELS:
+        return start(None)                      # 没指定引擎 → 沿用旧行为
+    want = os.path.basename(MODELS[key][0])
+    if alive():
+        got = os.path.basename(loaded_model() or "")
+        if got == want:
+            print("服务已就绪（引擎 %s，模型匹配）" % key)
+            print("模型校验通过：%s[%s]" % (want, key))
+            return
+        print("⚠️ 端口上跑的是 %s，与引擎 %s 要求的 %s 不符 → 重启"
+              % (got or "未知", key, want))
+        stop()
+    start(key)
+    got = os.path.basename(loaded_model() or "")
+    if got != want:
+        print("❌ 模型校验失败：期望 %s，实际 %s" % (want, got or "未知"))
+        sys.exit(2)
+    print("模型校验通过：%s[%s]" % (want, key))
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     if cmd == "start":
@@ -144,6 +183,12 @@ if __name__ == "__main__":
             if "--" + k in sys.argv:
                 force = k
         start(force)
+    elif cmd == "ensure":
+        force = None
+        for k in MODELS:
+            if "--" + k in sys.argv:
+                force = k
+        ensure(force)
     elif cmd == "stop":
         stop()
     else:

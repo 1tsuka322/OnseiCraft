@@ -352,6 +352,25 @@ def _has_kana(s):
     return bool(JPN.search(s))
 
 
+# 初译残留检测（2026-10-28 R153）。HY-MT 分支原来只查「非空 + 无拒答词」，
+# 所以 Qwen 被当成 HY-MT 用时吐的英文/假名一路进了成品（全库 115 处 / 16 部）。
+# 这里只做**降级重试 + 记账**，不做硬失败——硬失败会让整轨卡死。
+LATIN_OK = {"AV", "JK", "SM", "VIP", "OK", "NG", "BGM", "SE", "CM", "DVD", "ID",
+            "HP", "TV", "OL", "BBA", "NTR", "POV", "ASMR", "cosplay", "Cosplay"}
+_LATIN = re.compile(r"[A-Za-z]{3,}")
+RESIDUE = {"latin": 0, "kana": 0, "retried": 0}
+
+
+def _residue(s):
+    """初译里不该出现的字：成串英文 / 假名。返回原因，干净返回 ""。"""
+    for w in _LATIN.findall(s or ""):
+        if w.upper() not in LATIN_OK and w not in LATIN_OK:
+            return "latin:" + w
+    if s and _has_kana(s):
+        return "kana"
+    return ""
+
+
 def translate_block(block, prev_ctx):
     """prev_ctx: 前几句的「日：… 译：…」，用来保持人称/称呼/口吻连贯。"""
     if ENGINE == "hymt":
@@ -362,11 +381,24 @@ def translate_block(block, prev_ctx):
         for _, t in block:
             _hint = _hymt_hint(t)
             _prompt = (HYMT_HINT_TEMPLATE % (_hint, t)) if _hint else (HYMT_TEMPLATE % t)
-            reply = call_llm([{"role": "user", "content": _prompt}],
-                             temperature=HYMT_TEMP, top_p=HYMT_TOP_P, top_k=HYMT_TOP_K,
-                             max_tokens=300)
-            rows = [x.strip() for x in strip_think(reply).splitlines() if x.strip()]
-            res.append(_clean_cell(rows[0]) if rows else "")
+            cand = ""
+            for attempt in range(3):
+                # 第一次用官方参数；出现英文/假名残留就降温重抽（残留多半是随机漂移）
+                temp = HYMT_TEMP if attempt == 0 else 0.2
+                reply = call_llm([{"role": "user", "content": _prompt}],
+                                 temperature=temp, top_p=HYMT_TOP_P, top_k=HYMT_TOP_K,
+                                 max_tokens=300)
+                rows = [x.strip() for x in strip_think(reply).splitlines() if x.strip()]
+                cand = _clean_cell(rows[0]) if rows else ""
+                if cand and not _residue(cand):
+                    break
+                if cand:
+                    RESIDUE["retried"] += 1
+            why = _residue(cand)
+            if why:
+                RESIDUE["latin" if why.startswith("latin") else "kana"] += 1
+                print("    ⚠️ 初译残留(%s)：%s -> %s" % (why, t[:26], cand[:34]), flush=True)
+            res.append(cand)
         if all(res) and not any(any(x in t for x in REFUSE) for t in res):
             return res, ""
         return None, ""
@@ -472,6 +504,9 @@ def main():
             except Exception:
                 results[i] = ""
         print("    翻译完成 %.1f 秒（逐句重试 %d）" % (time.time() - t0, len(bad)), flush=True)
+        if RESIDUE["retried"]:
+            print("    残留重抽 %d 次；仍残留 英文 %d / 假名 %d"
+                  % (RESIDUE["retried"], RESIDUE["latin"], RESIDUE["kana"]), flush=True)
 
         out = os.path.join(a.out_dir, src + ".lrc")
         with open(out, "w", encoding="utf-8") as f:

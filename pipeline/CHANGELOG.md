@@ -6,6 +6,44 @@
 
 ---
 
+## v0.1.0-beta.9 — 2026-10-28（引擎与模型对齐 + 初译残留兜底）
+
+### 2026-10-28 · 修：`serve.py start` 加载的模型与 `engine` 声明不一致（R153）
+
+**症状**：成品里出现整段英文（`给 classmates 和 the parents who are paying tuition带来麻烦的事情`），
+同时夹带整句拒答、元话语（「这个句子翻译成中文是：」）、日文残留、乱译（デカパイ→「比萨」）。
+全库 **115 处 / 16 部**。
+
+**根因**：`_ensure_server` 调 `serve.py start` 时**不带模型参数**，serve.py 就按显存自动选了
+`q5`（Qwen2.5-7B）；而 `KIKOERU_ENGINE=hymt` 让 `translate.py` 走 HY-MT 分支——
+等于**拿 HY-MT 的裸指令（「把下面的文本翻译成中文」+ 单句、无上下文、temp0.7）去问 Qwen2.5**。
+`alive()` 只探端口，「服务已在运行」把错模型原样留下，全链路没有一处校验 gguf。
+
+实测同一句日文：HY-MT 英文 **0/5**，Qwen2.5 英文 **5/5**。
+
+**改动**：
+
+1. `serve.py` 新增 `ensure --<model>`：查 `/props` 的 `model_path`，与目标不符就 `stop` + 重启，
+   起完再校验一次，对不上 `exit 2`。输出固定一行 `模型校验通过：<gguf>[<key>]` 供上层断言。
+2. `stages._ensure_server(ctx, model=None)` 改调 `ensure`，默认取 `cfg["engine"]`；
+   校验失败抛 `RuntimeError`；通过的模型名写进 `03_translate` 的 `extra.server_model`。
+3. 新增配置 `polish_engine`（默认 `q5`）。**04 润色必须用聊天模型**：它的输入是
+   「20 条规则 + 61 条术语 + 编号协议」，纯翻译模型会把规则当待译文本翻出来
+   （2026-10-18 污染过 121 条）。改之前 03/04 共用服务，管线实际全程只跑过 Qwen。
+4. `translate.py` HY-MT 分支加**初译残留检测**：命中成串拉丁字母（3+，白名单 `AV/JK/VIP` 等）
+   或假名 → 降温到 0.2 重抽（≤3 次）；仍残留则打印 `⚠️ 初译残留(<原因>)` 并计入轨尾汇总。
+
+**效果**（RJ01654115 五轨重跑，同一部作品同一批音频）：
+
+| | 内容行 | 英文行 |
+|---|---|---|
+| 修复前（Qwen 初译） | 1395 | **19** |
+| 修复后（HY-MT 初译） | 1445 | **3**（VIP / 一个罗马字 / 一个作品名） |
+
+`check.py` 17 部全过；`selftest` 13/13；`test_regressions` 门禁全过；`errata_audit --test` 44/44。
+
+---
+
 ## v0.1.0-beta.8 — 2026-10-27（空字幕门禁：`empty`）
 
 ### 2026-10-27 · 新增硬门禁 `empty`（`empty_check.py`）

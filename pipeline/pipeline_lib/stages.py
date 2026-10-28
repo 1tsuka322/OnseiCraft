@@ -178,18 +178,34 @@ def _overlay_rec(ctx):
     return manifest.file_rec(p) if os.path.exists(p) else {"path": p, "sha256": None, "bytes": None}
 
 
-def _ensure_server(ctx):
-    """启动 llama-server（幂等）。KIKOERU_SLOTS 进环境，影响确定性，记进参数。"""
+def _ensure_server(ctx, model=None):
+    """启动 llama-server（幂等），并**按引擎校验模型**。KIKOERU_SLOTS 进环境，影响确定性，记进参数。
+
+    model: 要哪个模型（serve.py 的 key）。默认取 cfg["engine"]（03 初译用）。
+    04 润色必须显式传 polish_engine（q5）——润色是「指令 + 20 条规则 + 编号协议」，
+    纯翻译模型 HY-MT 做不了；反过来初译也不该用 Qwen（它就是英文残留的源头）。
+
+    2026-10-28 事故（R153）：原来调 `serve.py start` 不带模型 → 按显存自动选 q5（Qwen2.5），
+    而 translate.py 因 KIKOERU_ENGINE=hymt 用 HY-MT 的裸指令 → 英文/拒答/日文残留混进初译。
+    改调 `serve.py ensure --<engine>`：端口上模型对不上就重启，起完再校验一次。
+    """
     slots = ctx.cfg.get("slots")
     if slots:
         ctx.env["KIKOERU_SLOTS"] = str(int(slots))
+    key = str(model or ctx.cfg.get("engine") or "").strip()
+    cmd = [ctx.py, _script("serve.py"), "ensure"]
+    if key:
+        cmd.append("--" + key)
     if ctx.dry:
-        print("[dry] %s serve.py start" % ctx.py)
+        print("[dry] " + " ".join(cmd))
         return
-    code, tail, _ = _tee([ctx.py, _script("serve.py"), "start"],
-                         ctx.log("03_translate", "serve.log"), env=ctx.env)
+    code, tail, _ = _tee(cmd, ctx.log("03_translate", "serve.log"), env=ctx.env)
     if code != 0:
-        raise RuntimeError("推理服务启动失败")
+        raise RuntimeError("推理服务启动失败（引擎 %s）" % (key or "auto"))
+    m = re.search(r"模型校验通过：(.+)", tail or "")
+    if key and not m:
+        raise RuntimeError("推理服务未通过模型校验（期望引擎 %s）" % key)
+    ctx.extra_server_model = m.group(1).strip() if m else None
 
 
 # ---------------------------------------------------------------- 各阶段
@@ -293,11 +309,15 @@ def stage_translate(ctx):
         raise RuntimeError("translate.py 退出码 %d" % code)
     n = len(glob.glob(os.path.join(out, "*.lrc")))
     return {"outputs": [manifest.dir_rec(out, "*.lrc")],
-            "gate": {"ok": n > 0, "tracks": n}, "extra": {"tracks": n}}
+            "gate": {"ok": n > 0, "tracks": n},
+            "extra": {"tracks": n,
+                      "server_model": getattr(ctx, "extra_server_model", None)}}
 
 
 def stage_polish(ctx):
-    _ensure_server(ctx)
+    # 润色必须用**能听指令的聊天模型**（Qwen），不能用初译的 HY-MT：
+    # polish 的输入是「20 条规则 + 术语表 + 编号协议」，纯翻译模型会把它当待译文本。
+    _ensure_server(ctx, ctx.cfg.get("polish_engine") or "q5")
     asr = effective_asr(ctx)
     draft = ctx.draft_dir()
     out = ctx.out_dir()
