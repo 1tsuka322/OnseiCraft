@@ -781,6 +781,46 @@ def normalize_halfwidth(t):
     return "".join(out)
 
 
+# ---- 译文里的日文残留归一（2026-10-28 R154，用户拍板）----
+# 两类，来源相同：初译把源语原样留在中文里，check.py 判「日文残留」→ 硬门禁失败。
+#   ① 名字里的「ヶ」：`茜ヶ崎椿` → `茜崎椿`。`ヶ` 是日本人名的正规写法，但本项目
+#      规范是**零假名**；夹在两个汉字之间时不可能是中文，删掉不影响语义。
+#      ⚠️ 只删「漢+ヶ+漢」，不碰 `ヶ月`/`ヶ所` 这类量词（那出现在日文侧，不是这里）。
+#   ② 术语的假名形：`茜ヶ崎つばき` → `茜ヶ崎椿`。**只替换 ja 键里含假名**的术语——
+#      `先生` 这种纯汉字键绝不能碰，中文里「先生」是合法词。
+_NAME_KANA = re.compile(r"(?<=[\u4e00-\u9fff])ヶ(?=[\u4e00-\u9fff])")
+_KANA_TERMS = [None]
+
+
+def kana_terms():
+    """[(ja, zh)]：ja 键**含假名**的术语，按 ja 长度降序（长词先换，避免被短词截断）。"""
+    if _KANA_TERMS[0] is not None:
+        return _KANA_TERMS[0]
+    out = []
+    try:
+        g = json.load(open(os.path.join(DEFAULT_STYLE, "glossary.json"), encoding="utf-8"))
+        for ja, v in g.items():
+            zh = (v or {}).get("zh") if isinstance(v, dict) else None
+            if zh and re.search(r"[\u3040-\u30ff]", ja):
+                out.append((ja, zh))
+    except Exception:
+        pass
+    out.sort(key=lambda x: -len(x[0]))
+    _KANA_TERMS[0] = out
+    return out
+
+
+def dejapanize(t):
+    """把译文里残留的日文写法确定性改掉（规则见上）。纯字符串替换，可复现。"""
+    if not t or not re.search(r"[\u3040-\u30ff]", t):
+        return t
+    for ja, zh in kana_terms():
+        if ja in t:
+            t = t.replace(ja, zh)
+    t = _NAME_KANA.sub("", t)
+    return t
+
+
 def cleanup(t, stats):
     if not t:
         return t
@@ -791,6 +831,11 @@ def cleanup(t, stats):
     # 会被 JPN 检测当成日文残留，**导致整行被丢弃**（一次全量跑丢了 3 行）。
     # 中文里不该出现这个字符，直接删掉比丢整行好。
     t = t.replace("\u30fc", "")
+    # 译文里残留的日文写法（2026-10-28 R154，用户拍板「ヶ 删掉」）。
+    # 和上面的「ー」同一类问题：初译把源语原样留在中文里 → check.py 判日文残留 →
+    # **硬门禁失败**（RJ01654115 复跑时 9 行全是这一个根因）。必须在 cleanup 里做，
+    # 因为这是「确定性归一」，不该再赌模型下一次会不会自己改对。
+    t = dejapanize(t)
     # 省略号归一：英文点串「...」/ 半角「…」/ 数量不对的「………」一律收敛，
     # 形态跟随该译者的真实习惯（三点还是六连点，见 style/stats.json 的 ellipsis_style）
     mk = (stats or {}).get("ellipsis_style", "……")
