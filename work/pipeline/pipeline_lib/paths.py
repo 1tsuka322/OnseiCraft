@@ -48,7 +48,13 @@ KNOW_REGISTRY = os.path.join(KNOW, "registry.json")
 
 TMP = os.path.join(ROOT, "data", "tmp")
 QUEUE = os.path.join(TMP, "pipeline_queue")
-CONFIG = os.path.join(ROOT, "pipeline.json")
+# ⚠️ 配置在 **pipeline 包目录里**（work/pipeline/pipeline.json），不在 work/ 根。
+# 2026-10-28 目录重构后这里写成 `ROOT/pipeline.json`（= work/pipeline.json，根本不存在），
+# `load_config()` 于是**静默只用 DEFAULTS**——改配置文件等于没改。
+# 这正是「声明 ≠ 实际」那一类：文件在库里、看着改了、实际没读。
+# 现在按「包目录」定位，并在文件缺失时告警。
+CONFIG = os.environ.get("KIKOERU_CONFIG") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline.json")
 
 # 生产知识表：**唯一真相**在 data/style/，这里只登记「参与版本化的是哪些文件」。
 # role 用于「这条产物依赖哪类知识」的追溯与失效判断。
@@ -80,6 +86,9 @@ DEFAULTS = {
     # 润色要「20 条规则 + 术语表 + 编号协议」，只有聊天模型（Qwen）做得来。
     # 2026-10-28 之前两个阶段共用同一个服务，实际跑的一直是 Qwen（见 R153）。
     "polish_engine": "q5",
+    # 04 只做确定性后处理、不过 LLM（Sakura 路线的配套开关，2026-10-28 R154）。
+    # 开它 = 走「Sakura 初译 → cleanup-only」新路线；关它 = 现网「HY-MT → Qwen 润色」。
+    "polish_cleanup_only": False,
     # 交付的 16 部是 cue 模式做的（spacer 只在 is_cue 分支产生，成品有 304 个 spacer）。
     # 0=显示行 / 1=语义 cue —— 默认必须与交付口径一致，否则行数/清屏行全对不上。
     "cue_pipeline": 1,
@@ -125,6 +134,10 @@ def load_config():
                     cfg[k] = v
         except Exception as e:
             print("⚠️ 读 %s 失败，用默认配置：%s" % (CONFIG, e))
+    else:
+        # 不再静默：以前路径写错，配置文件存在但没被读，跑出来跟默认值一样，
+        # 谁都发现不了。缺文件必须说一声。
+        print("⚠️ 配置文件不存在：%s → 全部用 DEFAULTS" % CONFIG)
     return cfg
 
 

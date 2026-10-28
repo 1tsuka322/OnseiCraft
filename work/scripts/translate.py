@@ -356,7 +356,12 @@ def _has_kana(s):
 # 所以 Qwen 被当成 HY-MT 用时吐的英文/假名一路进了成品（全库 115 处 / 16 部）。
 # 这里只做**降级重试 + 记账**，不做硬失败——硬失败会让整轨卡死。
 LATIN_OK = {"AV", "JK", "SM", "VIP", "OK", "NG", "BGM", "SE", "CM", "DVD", "ID",
-            "HP", "TV", "OL", "BBA", "NTR", "POV", "ASMR", "cosplay", "Cosplay"}
+            "HP", "TV", "OL", "BBA", "NTR", "POV", "ASMR", "cosplay", "Cosplay",
+            # 2026-10-28 R154：Sakura 把「アプリ」译成「APP」是正常译法，
+            # 白名单漏了 APP → 「睡眠APP……？」整句被判拉丁残留、兜底成「…」。
+            # 同类高频借词一起补上，别等下次再踩。
+            "APP", "App", "SNS", "LINE", "PC", "USB", "IC", "QR", "AI", "HP",
+            "JK", "DK", "OL", "AV", "MV", "PV", "CG", "RPG", "NTR", "BBA"}
 _LATIN = re.compile(r"[A-Za-z]{3,}")
 RESIDUE = {"latin": 0, "kana": 0, "retried": 0}
 
@@ -442,6 +447,22 @@ def _src_latin(ja):
     return False
 
 
+def _clean_ja(ja):
+    """摘掉源语里的**非白名单**拉丁词，返回 (清理后日文, 是否还有实质内容)。
+
+    为什么不能整句兜底：`何だったの ima no…`（ASR 把「今」拼成了罗马字）
+    整句会变成「…」，把「刚才那是什么」这句真台词一起丢了。
+    摘掉 `ima` 之后还剩「何だったの」，可以正常译。
+    """
+    t = re.sub(r"[A-Za-z]+",
+               lambda m: "" if m.group(0).upper() not in LATIN_OK else m.group(0),
+               ja or "")
+    # 摘掉英文后常剩一串标点（`はぁ… Huh, Ah, no, sorry!` → `はぁ… , , , !`）
+    t = re.sub(r"[、,，]\s*(?=[、,，！？!?…])", "", t)
+    t = re.sub(r"\s{2,}", " ", t).strip()
+    return t, bool(re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", t))
+
+
 def _ja_dup(ja):
     """源语自己就在重复（`もう一回もう一回`、`待って待って`）。
 
@@ -515,6 +536,9 @@ def _sakura_bad(zh, ja):
     why = _residue(zh)
     if why:
         return why, _nonlexical(ja)
+    # 整行没有一个中日文字（只剩标点/空格）→ 这是模型没产出内容，不是译文
+    if zh and not re.search(r"[\u4e00-\u9fff\u3040-\u30ff]", zh):
+        return "nolang", _nonlexical(ja)
     jn = len(_STRIP.sub("", ja or ""))
     zn = len(_STRIP.sub("", zh or ""))
     if jn >= 5 and zn > SAKURA_MAX_RATIO * jn:
@@ -599,8 +623,20 @@ def translate_block(block, prev_ctx):
                     # 实测轨 04：7 处含拉丁的 ASR 行里 5 处是这种。
                     if _src_latin(ja):
                         HALLU["src"] = HALLU.get("src", 0) + 1
-                        HALLU["masked"] += 1
-                        out.append(SAKURA_FALLBACK)
+                        # 摘掉拉丁词后如果还剩实词（`何だったの ima no…`），
+                        # 就用清理后的日文重译；什么都不剩（`Okay, now I'm…`）才兜底。
+                        cja, has = _clean_ja(ja)
+                        if not has:
+                            HALLU["masked"] += 1
+                            out.append(SAKURA_FALLBACK)
+                            continue
+                        cand, ok = _sakura_retry_one(cja)
+                        if ok:
+                            out.append(cand)
+                        else:
+                            HALLU["left"] += 1
+                            HALLU["masked"] += 1
+                            out.append(SAKURA_FALLBACK)
                         continue
                     why, nonlex = _sakura_bad(zh, ja)
                     if not why:

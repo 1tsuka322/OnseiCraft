@@ -329,6 +329,11 @@ def stage_polish(ctx):
     cmd = [ctx.py, _script("polish.py"), asr, draft, out,
            "--style", paths.STYLE, "--system-mode",
            ctx.cfg.get("system_mode", "strong")]
+    if ctx.cfg.get("polish_cleanup_only"):
+        # 新路线（2026-10-28 R154）：Sakura 的输出已经是 ACGN 风格，
+        # 再让 Qwen 按「为 HY-MT 写的 20 条规则」改只会改坏（实测整体错位一行）。
+        # 只做确定性后处理：标点归一 / 残留清理 / A8 遮蔽 / 术语锁。
+        cmd.append("--cleanup-only")
     if ctx.cfg.get("allow_loss"):
         # 丢行硬门禁的显式放行口。默认关：丢行必须是人看过之后的决定，
         # 而且会写进 params（指纹）与 gate，promote 时还会再拦一次。
@@ -560,6 +565,7 @@ STAGES = {
         "run": stage_polish,
         "params": lambda ctx: {"slots": ctx.cfg.get("slots"),
                                "polish_engine": ctx.cfg.get("polish_engine", "q5"),
+                               "cleanup_only": bool(ctx.cfg.get("polish_cleanup_only")),
                                "cue_pipeline": int(ctx.cfg.get("cue_pipeline", 1)),
                                "allow_loss": bool(ctx.cfg.get("allow_loss")),
                                "spk_prefix": bool(ctx.cfg.get("spk_prefix")),
