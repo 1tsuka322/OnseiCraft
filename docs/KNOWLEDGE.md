@@ -13,8 +13,8 @@
 | `glossary.json` | 术语 → 固定译法（进 prompt） | `03_translate` |
 | `pin_sets.json` | 允许集（同一词的多个可接受译法） | `05_term_lock` |
 
-运行时从 `data/style/` 读；仓库里另有一份可公开的副本在 `assets/corpus/glossary.json`
-（去掉了作品标识与来源）。查找顺序与风格库一致：`KIKOERU_STYLE` → `data/style` → `presets`。
+运行时从 `data/style/` 读；公开仓库只带 `presets/` 里的公开副本。
+查找顺序与风格库一致：`KIKOERU_STYLE` → `data/style` → `presets`。
 
 ## 错字条目格式
 

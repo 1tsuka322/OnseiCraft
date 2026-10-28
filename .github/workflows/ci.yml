@@ -60,7 +60,7 @@ jobs:
           if [ -n "$hit" ]; then
             echo "$hit"; echo "::error::音频/模型文件被提交了"; fail=1
           fi
-          hit=$(git ls-files | grep -E '^(RJ[0-9]|kikoerusubtitle|runs|regset|knowledge|tmp|internal|data)' | head -5 || true)
+          hit=$(git ls-files | grep -E '^(RJ[0-9]|kikoerusubtitle|runs|regset|knowledge|tmp|internal|data|assets)' | head -5 || true)
           if [ -n "$hit" ]; then
             echo "$hit"; echo "::error::数据或内部台账被提交了（应被 .gitignore 挡住）"; fail=1
           fi
