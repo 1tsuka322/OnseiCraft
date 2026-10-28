@@ -237,6 +237,14 @@ def stage_asr_fix(ctx):
         return {"outputs": [], "gate": None, "extra": {"dry_run": True}}
     n = AF.auto_apply_errata(os.path.join(ctx.run.stage_dir("02_asr_fix")),
                              src, fix)
+    # auto_apply_errata 只写「有改动」的轨；03_translate 读的是 fix_dir，
+    # 不补就会**静默丢掉没命中 errata 的轨**（R152 实测：5 轨只出了 2 轨）。
+    copied = 0
+    for p in glob.glob(os.path.join(src, "*.json")):
+        dst = os.path.join(fix, os.path.basename(p))
+        if not os.path.exists(dst):
+            shutil.copy2(p, dst)
+            copied += 1
     st = AF.errata_stats(reset=True)
     rec = {"applied": st["applied"], "ctx_hit": st["ctx_hit"],
            "new_ctx": len(st["new_ctx"]), "scope_skip": len(st["scope_skip"]),

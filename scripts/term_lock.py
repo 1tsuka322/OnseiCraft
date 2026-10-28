@@ -49,6 +49,13 @@ import collections
 
 sys.stdout.reconfigure(encoding="utf-8")
 
+# styleloc 解析风格库位置（KIKOERU_STYLE → data/style → presets）。
+# 2026-10-28（R152）：第 400 行模块级就用了 styleloc 却没导入 → 脚本一 import 就 NameError，
+# 05_term_lock 阶段直接崩。和 asr_fix_scan 是同一类漏导入。
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import styleloc  # noqa: E402
+
 
 # ---------------------------------------------------------------------------
 # 锁定组定义
