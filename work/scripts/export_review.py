@@ -210,7 +210,10 @@ def main():
     ap.add_argument("--project", default="")
     ap.add_argument("--track", default="")
     ap.add_argument("--out", default="")
-    ap.add_argument("--format", choices=["md", "tsv"], default="md")
+    ap.add_argument("--format", choices=["md", "tsv", "txt"], default="md",
+                    help="txt = 竖线分隔纯文本（外部模型最容易读；tsv 的制表符常被吃掉）")
+    ap.add_argument("--split", action="store_true",
+                    help="按轨拆成多个文件（每轨一两百行，外部模型一次能读完）")
     ap.add_argument("--only-flagged", action="store_true",
                     help="只导出带标记的行（贴给外部模型时体积小得多）")
     a = ap.parse_args()
@@ -224,6 +227,8 @@ def main():
         rj, "_flags" if a.only_flagged else ""))
     if a.format == "tsv":
         out = os.path.splitext(out)[0] + ".tsv"
+    elif a.format == "txt":
+        out = os.path.splitext(out)[0] + ".txt"
 
     if a.format == "tsv":
         with open(out, "w", encoding="utf-8") as f:
@@ -233,6 +238,42 @@ def main():
                     r["track"], i, r["t"], r["ja"].replace("\t", " "),
                     r["ja_clean"].replace("\t", " "), r["zh"].replace("\t", " "),
                     r["flags"]))
+
+    elif a.format == "txt":
+        # 竖线分隔纯文本。**不用 tab**：贴进外部模型时 tab 常被吞掉/当缩进，
+        # 整张表会错列（R154 实测 tsv 读不了）。
+        def _txt(path, rs, title):
+            with open(path, "w", encoding="utf-8") as f:
+                if title:
+                    f.write("%s\n%s\n\n" % (title, "=" * len(title)))
+                f.write("格式：行号 | 时间 | ASR 原文 | 02修正后 | 最终中文 | 标记\n")
+                f.write("（02修正后为空 = 与 ASR 原文相同；标记为空 = 无异常）\n\n")
+                cur = None
+                for r in rs:
+                    if r["track"] != cur:
+                        cur = r["track"]
+                        f.write("\n---- %s ----\n" % cur)
+                    f.write("%4d | %02d:%05.2f | %s | %s | %s | %s\n" % (
+                        r["n"], int(r["t"] // 60), r["t"] % 60,
+                        r["ja"] or "", r["ja_clean"] or "", r["zh"] or "",
+                        r["flags"] or ""))
+        head = "%s 逐行审校表（%d 行内容，%d 行带标记）" % (
+            rj, len(rows), sum(1 for r in rows if r["flags"]))
+        if a.split:
+            by = {}
+            for r in rows:
+                by.setdefault(r["track"], []).append(r)
+            base = os.path.splitext(out)[0]
+            made = []
+            for i, (tr, rs) in enumerate(sorted(by.items()), 1):
+                fp = "%s_%02d.txt" % (base, i)
+                _txt(fp, rs, "%s — 轨 %d/%d" % (head, i, len(by)))
+                made.append(fp)
+            print("→ 已拆 %d 个文件：%s ..." % (len(made), made[0]))
+            return
+        _txt(out, rows, head)
+        print("→ %s（%d 行，%d 行带标记）" % (out, len(rows), sum(1 for r in rows if r["flags"])))
+        return
         print("→ %s（%d 行）" % (out, len(rows)))
         return
 

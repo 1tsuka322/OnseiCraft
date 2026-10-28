@@ -26,6 +26,9 @@ from . import paths
 LOCK = os.path.join(paths.QUEUE, "gpu.lock")
 JOBS = os.path.join(paths.QUEUE, "jobs")
 STALE_SEC = 24 * 3600
+# pid 判死后的「瞬时宽限」：只防「别人刚建锁、我还没读到 pid」那一瞬，
+# 不是防僵尸锁（僵尸锁必须能被抢回来）。
+STALE_GRACE = 10
 
 
 def _pid_alive(pid):
@@ -86,8 +89,13 @@ class FileLock(object):
                           % (info.get("job"), pid, info.get("since"), age / 60))
                     print("       等它结束；确认进程已死再删 %s" % self.path)
                     raise SystemExit(2)
-                if pid and age < STALE_SEC:
-                    # pid 判死但锁很新：可能是别人刚建的瞬时窗口，退一步重试
+                if pid and age < STALE_GRACE:
+                    # pid 判死但锁**刚刚**建好：可能是别人刚写入、我还没读到 pid 的
+                    # 瞬时窗口，退一步重试。
+                    # ⚠️ 这里以前是 `age < STALE_SEC`（= 24 小时）——等于**进程崩了
+                    #    锁也永远抢不回来**：实测批跑时上一轮 ASR 被 kill，锁留在盘上，
+                    #    接下来 15 部全部「抢锁失败」退出（R155）。
+                    #    24 小时的宽限毫无道理：pid 已经判死就是死了。
                     time.sleep(0.2)
                     continue
                 stale = "%s.stale.%s" % (self.path, uuid.uuid4().hex)
