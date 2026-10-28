@@ -282,7 +282,7 @@ def _errata_matcher():
     return AF
 
 
-def _match_errata(text, e):
+def _match_errata(text, e, ignore_mode=False):
     AF = _errata_matcher()
     ja, fix = e["ja"], e["fix"]
     if ja not in text:
@@ -292,7 +292,10 @@ def _match_errata(text, e):
     if AF.is_table_variant(ja, fix):
         return False, "表记差异白名单"
     mode = e.get("mode", "auto")
-    if mode == "review":
+    # `review` 的语义是「识别出来、但永不自动落地」。校验**正例**时我们要验的是
+    # 「这条规则能不能认出这个错形」，不是「会不会自动改」——否则任何 review 条目
+    # 的正例都必然失败（R154 前的口径错误，导致 review 条目根本没法提交）。
+    if mode == "review" and not ignore_mode:
         return False, "review 模式永不自动改"
     if mode == "guard":
         ctx = e.get("ctx") or []
@@ -365,7 +368,7 @@ def validate(pid):
         tests = p.get("tests") or {}
         for i, t in enumerate(tests.get("positive") or []):
             tx = t.get("text") if isinstance(t, dict) else t
-            ok, why = _match_errata(tx or "", dict(p, ja=ja, fix=fix))
+            ok, why = _match_errata(tx or "", dict(p, ja=ja, fix=fix), ignore_mode=True)
             ck("正例#%d 命中" % (i + 1), ok, "%s｜%s" % (why, (tx or "")[:60]))
         for i, t in enumerate(tests.get("negative") or []):
             tx = t.get("text") if isinstance(t, dict) else t

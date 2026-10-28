@@ -19,6 +19,7 @@ r"""语义 cue 层 + 中文显示行渲染（GPT 工作框架的阶段 1 / 阶�
 `KIKOERU_CUE_PIPELINE=1` 时启用（默认关，仍走旧的 `build_lines`，可随时回退）。
 """
 import os
+import asr_words
 import re
 import math
 
@@ -232,6 +233,12 @@ def flatten_for_cues(segments):
     out = []
     for si, seg in enumerate(segments):
         ws = seg.get("words")
+        # ⚠️ 安全网（2026-10-28 R154）：words 拼起来和 text 不一致 = 上游改过 text
+        #    却没同步 words（01 的拉丁清理 / 02 的 errata / 人工落地）。
+        #    这时 words 是**过期**的，用它翻译等于错字表完全失效。
+        #    宁可丢掉词级时间戳（cue 边界略粗），也不能拿过期文本去译。
+        if ws and not asr_words.consistent(seg):
+            ws = None
         if ws:
             out.extend({"s": float(w["s"]), "e": float(w["e"]), "w": w["w"],
                         "spk": seg.get("speaker", ""), "seg": si} for w in ws)

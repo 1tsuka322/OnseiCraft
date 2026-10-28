@@ -119,26 +119,40 @@ def build(run_dir, track_filter=None):
             # 造成「上一行日文包含下一行」的假象（外部审校据此误判成 ASR 重影）。
             segs_in = [sg for k, sg in sorted(a_src.items())
                        if t - 0.05 <= k < t1 - 0.005]
+            # `ja` 与 `ja_clean` 必须**同粒度**（都是本行时间窗内所有段的拼接）。
+            # 以前 ja 用 01 的原文拼接、ja_clean 只取命中段的 fix_log 片段，
+            # 结果看起来像「02 层把句子后半截截断了」——实际是列语义不一致
+            # （外部审校据此误判，R154）。
             ja_raw = "".join((sg.get("text") or "") for sg in segs_in).strip()
+            ja_clean = ""
             seg = segs_in[0] if segs_in else None
-            flags, ja_clean = [], ""
+            flags = []
             if not ja_raw and text:
                 flags.append("cont")      # 承接上一行，日文已在上面出现
 
-            # ---- 01 层：拉丁幻觉 ----
-            hl = (seg or {}).get("halluc_latin")
-            if hl:
-                act = hl.get("action") or "drop"
+            # ---- 01 层：拉丁幻觉（`action` 记在段上）----
+            acts = set()
+            for k, sg in sorted(a_src.items()):
+                if t - 0.05 <= k < t1 - 0.005:
+                    hl = sg.get("halluc_latin")
+                    if hl:
+                        acts.add(hl.get("action") or "drop")
+            for act in sorted(acts):
                 flags.append("latin:" + act)
-                if act == "strip":
-                    ja_clean = hl.get("old") or ""
 
-            # ---- 02 层：errata ----
-            fseg = a_fix.get(t) or {}
-            fl = fseg.get("fix_log")
-            if fl and fl.get("new"):
+            # ---- 02 层：errata（用 02 的 text，同粒度拼接）----
+            fixed_parts, hit = [], False
+            for k, sg in sorted(a_fix.items()):
+                if t - 0.05 <= k < t1 - 0.005:
+                    fixed_parts.append(sg.get("text") or "")
+                    if sg.get("fix_log"):
+                        hit = True
+            if hit:
                 flags.append("errata")
-                ja_clean = fl["new"]
+            ja_fixed = "".join(fixed_parts).strip()
+            # 只有真的变了才填 ja_clean（空 = 与 ja 相同，表更干净）
+            if ja_fixed and ja_fixed != ja_raw:
+                ja_clean = ja_fixed
 
             # ---- 03/04 层：现算的判据（确定性） ----
             if ja_raw:

@@ -398,7 +398,9 @@ SAKURA_FALLBACK = "…"
 SHORT_JA = 8
 HALLU = {"latin": 0, "loop": 0, "ratio": 0, "masked": 0, "retried": 0, "left": 0}
 _NONLEX = re.compile(r"^[\u3040-\u30ff\s、。，,.!?！？…‥~～ー〜っ]+$")
-_STRIP = re.compile(r"[\s、。，,.!?！？…‥~～ー〜]")
+# ⚠️ 必须含 em dash / en dash / 连字符：`啊—啊—啊—…` 复读时剥不掉破折号，
+#    `(.)\1{4,}` 就匹配不到，退化漏判（R154 实测 1 处 long 就是这么漏的）。
+_STRIP = re.compile(r"[\s、。，,.!?！？…‥~～ー〜—–\-·]")
 # 日文侧去标点**不能剥「ー」**：`コーラ` 剥成 `コラ` 就只剩 2 字，会被「超短促」误判成喘息。
 _STRIP_JA = re.compile(r"[\s、。，,.!?！？…‥~～]")
 _SRC_LATIN = re.compile(r"[A-Za-z]{3,}")
@@ -546,8 +548,14 @@ def _sakura_bad(zh, ja):
     if jn >= 5 and zn > SAKURA_MAX_RATIO * jn:
         return "ratio:%d/%d" % (zn, jn), _nonlexical(ja)
     # 源语自己就在重复（`もう一回もう一回`）→ 译文重复是对的，不判
-    if _loop4(zh) and not _ja_dup(ja):
-        return "loop", _nonlexical(ja)
+    if _loop4(zh):
+        # 原文自己重复时，译文重复是**对的**（`待って待って`→「等等等等」）。
+        # 但**放大**就不对了：`ジャメそしてそしてそして`（3 次）被译成
+        # `啊—啊—啊—…`（14 次）。所以除了「原文不重复」，再加一条
+        # 「译文剥完标点后 ≥10 字」——短句重复多半合法，长串重复基本是退化。
+        _zs = _STRIP.sub("", zh or "")
+        if not _ja_dup(ja) or len(_zs) >= 10:
+            return "loop", _nonlexical(ja)
     return "", False
 
 

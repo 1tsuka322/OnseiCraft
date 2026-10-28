@@ -46,6 +46,7 @@ python work/scripts/asr_latin_halluc.py --asr work/data/draft --apply
 import argparse
 import glob
 import json
+import asr_words  # text 改了必须同步 words（cue 管线读 words 不读 text）
 import os
 import re
 import shutil
@@ -141,9 +142,14 @@ def apply(asr_root, rows):
             old = s.get("text") or ""
             if it["why"].startswith("drop:"):
                 s["text"] = ""
+                # ⚠️ cue 管线读 words 不读 text：只清 text 等于没清
+                #    （实测：`直近でショット` 判了 drop，译文照旧翻出「近距离 快门」）
+                asr_words.clear_words(s)
                 n_drop += 1
             else:
                 s["text"] = _strip_latin(old)
+                if not asr_words.strip_latin_words(s, _strip_latin):
+                    asr_words.clear_words(s)
                 n_strip += 1
             s["halluc_latin"] = {"old": old, "why": it["why"], "action": it["why"].split(":")[0]}
         json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=1)

@@ -45,6 +45,7 @@ DRAFT = os.path.join(ROOT, "data", "draft")
 if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import styleloc  # noqa: E402
+import asr_words  # noqa: E402  text 改了必须同步 words（cue 管线读 words 不读 text）
 
 KANJI = lambda c: "\u4e00" <= c <= "\u9fff"
 
@@ -512,6 +513,10 @@ def auto_apply_errata(draft, src_dir, fix_dir):
                     continue
                 new = tx.replace(e["ja"], e["fix"])
                 sg["text"] = new
+                # ⚠️ cue 管线（cues.flatten_for_cues）优先用 words、不看 text。
+                #    只改 text 等于没改（实测：性液→精液 改对了，译文仍是「性液」）。
+                if not asr_words.patch_words(sg, e["ja"], e["fix"]):
+                    asr_words.clear_words(sg)
                 sg["fix_log"] = {"old": tx, "new": new, "rule": "C已知错字",
                                  "evidence": e.get("evidence", ""), "mode": mode,
                                  "ctx": e.get("ctx", [])}
@@ -576,6 +581,8 @@ def auto_apply_green(draft, src_dir, fix_dir, other_ver="asr"):
                 continue
             new = tx.replace(a, b)
             segs[si]["text"] = new
+            if not asr_words.patch_words(segs[si], a, b):
+                asr_words.clear_words(segs[si])
             segs[si]["fix_log"] = {"old": tx, "new": new, "rule": "A3+绿灯",
                                    "evidence": "同读音+双侧汉字+同轨锚点（R112 实测 23/23 全真）"}
             base_txt = "".join(x.get("text") or "" for x in segs)
@@ -713,6 +720,8 @@ def main_track(a):
                 continue
             old = segs[bi].get("text") or ""
             segs[bi]["text"] = new
+            # 人工整句替换：词级时间戳对不上新文本了，直接丢掉让下游用 text
+            asr_words.clear_words(segs[bi])
             segs[bi]["fix_log"] = {"old": old, "new": new, "rule": "人工", "evidence": a.why}
             applied.append({"t": round(float(segs[bi]["start"]), 2), "old": old, "new": new})
 
