@@ -10,9 +10,12 @@
 # 下面的模式都**不带前导斜杠**，所以在任意层级都匹配（work/data/ 也算）。
 
 # ---- 仓库根：音频与成品 ----
-ASMRmusic/
+# 目录本身要留在版本库里（clone 下来就能看到「三个文件夹」），只忽略里面的内容
+ASMRmusic/*
+!ASMRmusic/.gitkeep
+kikoerusubtitle/*
+!kikoerusubtitle/.gitkeep
 RJ[0-9]*/
-kikoerusubtitle/
 # 成品回收站留在 work/ 里
 kikoerusubtitle_rec/
 
