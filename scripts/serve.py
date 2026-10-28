@@ -65,7 +65,8 @@ API = "http://127.0.0.1:%d" % PORT
 def gpu_free_mb():
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=20)
+                             capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=20)
         return int(out.stdout.strip().splitlines()[0])
     except Exception:
         return -1
@@ -130,8 +131,11 @@ def start(force=None):
 
 
 def stop():
+    # ⚠️ 必须指定 encoding + errors：`taskkill` 在中文 Windows 上输出 GBK，
+    # 默认 utf-8 解码会让 subprocess 的 reader 线程抛 UnicodeDecodeError，
+    # 日志里多出一大段 traceback（R154 实测），排障时非常误导。
     subprocess.run(["taskkill", "/F", "/IM", "llama-server.exe"],
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
     time.sleep(2)
     print("已停止" if not alive() else "仍在运行")
 

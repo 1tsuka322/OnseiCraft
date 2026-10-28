@@ -42,10 +42,17 @@ KNOWLEDGE_FILES = [
     ("parallel.json", "polish", "日→中平行句对（few-shot 例句来源，17MB 只记哈希）"),
     ("terms_db.json", "term_lock", "术语发现库（jieba 实现）"),
     ("stats.json", "checks", "人工风格统计（check 的参照）"),
+    # P2（2026-10-28）：源语短语 → 必须表达的概念族。管「原文出现就不能丢什么」，
+    # 与 glossary（管「更偏好怎么说」）是两张表，别合并。
+    ("coverage.json", "checks", "语义覆盖表（委婉化拦截）"),
 ]
 
 DEFAULTS = {
-    "python": r"C:/Users/zyk/data/binaries/python/envs/default/Scripts/python.exe",
+    # 不写死解释器：默认用「跑 pipeline.py 的那个」。写死过两次路径，
+    # 两次都指向已经不存在的目录，`python_exe` 静默回落 → 看起来一切正常，
+    # 实际换了环境（R154 实测：pipeline.json 里那条早就没了）。
+    # 要指定就设 KIKOERU_PYTHON，或在 pipeline.json 里加 "python"。
+    "python": os.environ.get("KIKOERU_PYTHON", ""),
     "device": "cuda",
     "compute": "float16",
     "engine": "hymt",
@@ -69,7 +76,7 @@ DEFAULTS = {
             "stages": ["01_asr", "02_asr_fix", "03_translate", "04_polish",
                        "05_term_lock", "06_checks"],
             "gates": ["check", "empty", "scan", "errata_audit", "test_regressions",
-                      "overlay", "trunc", "slot_guard"],
+                      "overlay", "trunc", "slot_guard", "semantic"],
         },
         "fast": {
             "stages": ["01_asr", "02_asr_fix", "03_translate", "04_polish",
@@ -79,7 +86,7 @@ DEFAULTS = {
         "checks": {
             "stages": ["06_checks"],
             "gates": ["check", "empty", "scan", "errata_audit", "test_regressions",
-                      "overlay", "trunc", "slot_guard"],
+                      "overlay", "trunc", "slot_guard", "semantic"],
         },
     },
 }
@@ -102,10 +109,18 @@ def load_config():
 
 
 def python_exe(cfg=None):
-    """必须用装了依赖的那个 venv；找不到就退回当前解释器并提示。"""
+    """必须用装了依赖的那个 venv；找不到就**明确告警**再退回当前解释器。
+
+    ⚠️ 以前是静默回落：配了一条不存在的路径，跑起来一切正常，
+    实际用的却是另一个解释器（依赖可能不同）。这违反「声明 == 实际」——
+    凡是声明了一个解释器/模型，就必须有一条 assert 实际 == 声明。
+    """
     p = (cfg or load_config()).get("python") or ""
     if p and os.path.exists(p):
         return p
+    if p:
+        print("⚠️ 配置的解释器不存在：%s → 改用当前解释器 %s"
+              % (p, sys.executable))
     return sys.executable
 
 

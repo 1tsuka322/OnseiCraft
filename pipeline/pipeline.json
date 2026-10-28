@@ -1,6 +1,5 @@
 {
  "_note": "管线配置。改这里而不是改代码；每份 manifest 会记录实际生效的配置。",
- "python": "C:/Users/zyk/data/binaries/python/envs/default/Scripts/python.exe",
  "device": "cuda",
  "compute": "float16",
  "ext": "auto",
@@ -15,5 +14,6 @@
  "diarize_thr": 0.3,
  "_slots_note": "slots=2 是现网默认（快一倍）；slots=1 时 llama.cpp 单槽解码，产出可逐字节复现（A/A 噪声底从 17% 降到 0），代价约 2 倍时间。要严格复现时 `pipeline run --slots 1`。",
  "polish_engine": "q5",
- "_polish_engine_note": "04 润色用的模型（q5=Qwen2.5-7B-Instruct）。不能跟 engine(hymt) 共用：纯翻译模型做不了「规则+术语+编号协议」的润色。"
+ "_polish_engine_note": "04 润色用的模型（q5=Qwen2.5-7B-Instruct）。不能跟 engine(hymt) 共用：纯翻译模型做不了「规则+术语+编号协议」的润色。",
+ "_python_note": "不写死解释器路径：默认用运行 pipeline.py 的那个解释器。要指定就设 KIKOERU_PYTHON 或在本文件加 \"python\"。"
 }

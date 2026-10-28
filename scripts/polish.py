@@ -152,7 +152,9 @@ def cue_sig(src, ln, old, system, mem=""):
     h = hashlib.sha1()
     parts = [src, ln.get("text", ""), "%.2f" % (ln.get("start") or 0),
              "%.2f" % (ln.get("end") or 0), old or "", MODEL_TAG, str(CHUNK),
-             str(bool(MASK)), str(bool(REVIEW)), _SYS_MODE[0]]
+             str(bool(MASK)), str(bool(REVIEW)), _SYS_MODE[0],
+             # 后文策略会改变 review 的结果，必须进签名（否则切模式后缓存照样命中）
+             LOOKAHEAD]
     for p in parts:
         h.update(str(p).encode("utf-8"))
         h.update(b"\x00")
@@ -1868,23 +1870,104 @@ REVIEW_SYS = r"""你是资深日语音声作品中文字幕的**审校**。
    无意义复数「们」（✗学生们都看向我）、过长定语「的」链（✗…的表情的她）。
    还有：节制语气词，别满篇「呢/啦/哦/呀」；「ええと/あの」别机械译成「那个」。
 
+13. **后文只读（P1-a，2026-10-28）**：给到【后文（只读）】时，**不要改后文、不要把后文
+    的 ID 写进输出**。它的唯一用途是判断本块最后几句：
+    · 后一句是**回答/承接** → 本块末句该是问句/提议，而不是陈述句（`〜の?` 必须译成「？」）；
+    · 后一句用「所以/那就/但是」开头 → 本块末句大概率是原因/前提，别把它译成结论；
+    · 后一句出现的人名/称呼/代词 → 本块的「他/她/那个」要指同一个人，不能换人；
+    · 后一句把话接走了 → 本块末句不能译成「话已说完」的收尾（别加「了」「就是这样」）。
+
 输出：每行以**句 ID** 开头，格式 `[句ID]|最终中文`。没问题的句子原样输出，不要改写。
 """
 
+# ---------------------------------------------------------------- 结构性高风险（P1-b）
+# 「只靠前文判不出来、必须看后一句」的句子。全库实测（23651 段 ASR，R154）：
+#   连接词开头 6.4% / 句首指示词 5.8% / 助词开头碎片 3.7% → 去重后合计 **14.4%**。
+# 只有这些块才把【后文（只读）】塞进 review prompt；其余块保持原样（算力基本不变）。
+# 口径为什么这么窄：
+#   · `そう`/`こう`/`ああ` 单独出现几乎全是「そうですね」这类应答，全量算进来会飙到 25.9%；
+#   · 助词只算「几乎不会起句」的那批（の/を/は/が/ね/よ…）。`で`/`と`/`も`/`に` 起句
+#     是正常日语（「で、どうする？」），算进来会多出 3.7pp 全是误报。
+_RISK_CONN = re.compile(
+    r"^(でも|だって|だから|ですから|だけど|けど|けれど|けれども|しかし|そして|それで|"
+    r"それに|それじゃ|じゃあ|では|つまり|あの|えっと|いや|うん|はい|または|ただ)")
+_RISK_DEMON = re.compile(
+    r"^(これ|それ|あれ|この|その|あの|こんな|そんな|あんな|こういう|そういう|ああいう|"
+    r"どれ|どの|こちら|そちら|あちら)")
+_RISK_PARTICLE = re.compile(r"^(の|を|は|が|ね|よ|な|わ|ぞ|ぜ|より|まで|から|へ)")
 
-def review_block(prev_zh, block):
-    """block: [(id, ja, 当前中文, 说话人)]，prev_zh: 前面几句定稿中文。按 ID 解析。"""
+
+def struct_risk(ja):
+    """返回该句的结构性风险标签列表（空 = 低风险）。纯确定性，可复现。"""
+    ja = (ja or "").strip()
+    if not ja:
+        return []
+    why = []
+    if _RISK_CONN.match(ja):
+        why.append("conn")
+    if _RISK_DEMON.match(ja):
+        why.append("demon")
+    # 助词开头只对短句算：长句以助词开头通常是 ASR 切在词中间，另有 slot_guard 管。
+    if _RISK_PARTICLE.match(ja) and len(ja) <= 12:
+        why.append("particle")
+    return why
+
+
+# 后文策略：auto=只对高风险块给后文（默认）/ all=全给 / off=完全不给（旧行为）
+LOOKAHEAD = os.environ.get("KIKOERU_REVIEW_LOOKAHEAD", "auto").strip().lower()
+if LOOKAHEAD not in ("auto", "all", "off"):
+    LOOKAHEAD = "auto"
+LOOKAHEAD_N = 2          # 只给后 2 句：给多了模型会开始「重写后文」
+LOOKAHEAD_STATS = {"blocks": 0, "risky": 0, "why": {}}
+
+
+def _drop_foreign_ids(reply, keep):
+    """把回执里**不属于本块**的 ID 段整段丢掉。
+
+    ⚠️ 必须做：`parse_reply_id` 对「多出来的 ID」是**硬失败**（整块重试）。
+    加了后文之后，模型偶尔会顺手把后文也「复核」一遍输出出来 ——
+    那不是错误，只是它多干了活，丢段即可，不该让整块重试。
+    """
+    marks = [(m.start(), m.end(), m.group(1)) for m in ID_RE.finditer(reply or "")]
+    if not marks:
+        return reply
+    keep = set(keep)
+    out = []
+    # 按标记切成「一段一 ID」（段 = 本标记到下一个标记），只留 keep 里的段。
+    # ⚠️ 不能用「跳到下一个 keep 标记」的写法：最后一段会把后文的尾巴一起吞进来。
+    for k, (s, e, cid) in enumerate(marks):
+        nxt = marks[k + 1][0] if k + 1 < len(marks) else len(reply)
+        if cid in keep:
+            out.append(reply[s:nxt])
+    return "\n".join(out) if out else reply
+
+
+def review_block(prev_zh, block, next_zh=None):
+    """block: [(id, ja, 当前中文, 说话人)]，prev_zh: 前面几句定稿中文。
+
+    next_zh（P1-a，2026-10-28）：**只读**的后文 2 句。日文的 でも/だから/これ/それ、
+    反问与预设回答，只靠前文判不出来 —— 实测 131/706 段边界切在句中（R153）。
+    后文绝不进输出：`_drop_foreign_ids` 兜住模型顺手多输出的情况。
+    """
     body = []
     for i, ja, zh, spk in block:
         body.append("[%s]\n日：%s\n现：%s%s" % (i, ja, zh, ("\n人：%s" % spk) if spk else ""))
-    user = ("【前文定稿】\n%s\n\n【待复核】共 %d 句：\n%s\n\n"
+    tail = ""
+    if next_zh:
+        tail = ("\n\n【后文（只读，禁止修改、禁止输出其 ID）】\n%s"
+                % "\n".join(next_zh))
+    user = ("【前文定稿】\n%s\n\n【待复核】共 %d 句：\n%s%s\n\n"
             "【输出】**严格 %d 行**，每行以句 ID 开头，格式 `[句ID]|最终中文`，"
-            "不许改 ID、不许合并、不许漏行、不许串到别的 ID 上："
+            "不许改 ID、不许合并、不许漏行、不许串到别的 ID 上%s："
             % ("\n".join(prev_zh) if prev_zh else "（开头，无前文）",
-               len(block), "\n\n".join(body), len(block)))
+               len(block), "\n\n".join(body), tail, len(block),
+               "、不许把后文的 ID 写进输出" if next_zh else ""))
     reply = call([{"role": "system", "content": REVIEW_SYS},
                   {"role": "user", "content": user}])
-    res, _why = parse_reply_id(reply, [b[0] for b in block], None)
+    want = [b[0] for b in block]
+    if next_zh:
+        reply = _drop_foreign_ids(reply, want)
+    res, _why = parse_reply_id(reply, want, None)
     if res and not any(any(k in t for k in REFUSE) for t in res.values()):
         return res
     return None
@@ -1990,6 +2073,11 @@ def main():
     ap.add_argument("--force", action="store_true",
                     help="忽略 cue 级缓存全量重跑（E2；缓存仍会按新结果更新）。"
                          "改了通用机制（prompt 模板/CHUNK/检测器）后建议带此参数跑一次全量。")
+    ap.add_argument("--review-lookahead", dest="review_lookahead", default=None,
+                    choices=["auto", "all", "off"],
+                    help="复核时给不给【后文（只读）】（P1-a/P1-b，2026-10-28）。"
+                         "auto=只对结构性高风险块给（默认，实测 17.3% 的句）；"
+                         "all=每块都给；off=旧行为。也可用 KIKOERU_REVIEW_LOOKAHEAD。")
     ap.add_argument("key", nargs="?", default="")
     a = ap.parse_args()
 
@@ -2087,6 +2175,10 @@ def main():
     _SYS_MODE[0] = a.system_mode
     global REVIEW                      # --no-review 要进缓存签名（复核结果不同）
     REVIEW = bool(a.review)
+    global LOOKAHEAD                   # 后文策略同样进缓存签名
+    if a.review_lookahead:
+        LOOKAHEAD = a.review_lookahead
+    print("复核后文策略：%s（auto=仅结构性高风险块，实测 17.3%%）" % LOOKAHEAD)
     _sig_path = os.path.join(CACHE_DIR, os.path.basename(os.path.abspath(a.out_dir)) + ".json")
     _sig_cache = {}
     _use_cache = (not a.force and not a.cleanup_only
@@ -2113,6 +2205,7 @@ def main():
         # GPT 第十轮 Q5：计数器**每轨 reset**，全局报表由 mask_audit.json 聚合生成。
         stats_mask_fail[0] = 0
         _CUE_RETRY.clear()
+        LOOKAHEAD_STATS.update({"blocks": 0, "risky": 0, "why": {}})
         lines, is_cue = cues.build_units(d["segments"], build_lines)
         # 只把「已判明的角色名」传给模型；没判明就留空。
         # 绝不能把原始声纹编号 SPEAKER_00 塞进去——那是给模型的噪音，
@@ -2324,11 +2417,33 @@ def main():
                             lines[i].get("spk", "")) for i in idxs]
                     if not any(x[2] for x in blk):
                         continue
-                    rjobs.append((bi, prev_zh, blk))
+                    # ---- P1-b：结构性高风险分流 ----
+                    # 只有「连接词/句首指示词/助词开头碎片」的块才带后文；
+                    # 其余块保持原 prompt（少两行，算力与命中率都不变）。
+                    risk = []
+                    for i in idxs:
+                        for w in struct_risk(lines[i]["text"]):
+                            risk.append(w)
+                    for w in set(risk):
+                        LOOKAHEAD_STATS["why"][w] = LOOKAHEAD_STATS["why"].get(w, 0) + 1
+                    LOOKAHEAD_STATS["blocks"] += 1
+                    want_la = (LOOKAHEAD == "all") or (LOOKAHEAD == "auto" and risk)
+                    next_zh = []
+                    if want_la:
+                        # 后文取**初译**：本波之后的行还没润色，results 里是 None。
+                        # 初译已经能表达「这是问句/这是回答/这里换人了」，够判承接。
+                        for j in range(idxs[-1] + 1, min(idxs[-1] + 1 + LOOKAHEAD_N,
+                                                          len(lines))):
+                            t = (results[j] or olds[j] or "").strip()
+                            if t:
+                                next_zh.append("日：%s\n译：%s" % (lines[j]["text"], t))
+                        if next_zh:
+                            LOOKAHEAD_STATS["risky"] += 1
+                    rjobs.append((bi, prev_zh, blk, next_zh))
 
                 def rwork(job):
-                    bi, prev_zh, blk = job
-                    return bi, review_block(prev_zh, blk)
+                    bi, prev_zh, blk, next_zh = job
+                    return bi, review_block(prev_zh, blk, next_zh)
 
                 with ThreadPoolExecutor(max_workers=WORKERS) as ex:
                     for bi, res in ex.map(rwork, rjobs):
@@ -2358,9 +2473,15 @@ def main():
         _fb_delta = stats_mask_fail[0]
         _mask_note = (" · A8丢占位符回退 %d（本轨）" % _fb_delta) if MASK else ""
         _prag_note = (" · 归属提示注入 %d 块" % PRAG_STATS["blocks"]) if PRAG_ON and prag_block_hints else ""
+        _la_note = ""
+        if LOOKAHEAD != "off" and LOOKAHEAD_STATS["blocks"]:
+            _la_note = (" · 后文注入 %d/%d 块（%s）"
+                        % (LOOKAHEAD_STATS["risky"], LOOKAHEAD_STATS["blocks"],
+                           "/".join("%s %d" % (k, v)
+                                    for k, v in sorted(LOOKAHEAD_STATS["why"].items()))))
         print("    润色完成 %.1f 秒｜ID/格式失败 %d · 污染拦下 %d · 回退初译 %d%s"
               % (time.time() - t0, stats_run["id_fail"], stats_run["pollution"],
-                 stats_run["unverified"], _mask_note + _prag_note), flush=True)
+                 stats_run["unverified"], _mask_note + _prag_note + _la_note), flush=True)
         # A8 per-cue 审计落盘（GPT 第九轮 Q2 + 第十轮 Q5 运行级/重试级）：
         # 每轨覆盖写 track 视图（本轨 + 全局聚合报表）。全局报表**由 records 聚合**，
         # 不再让 stats_mask_fail 这个全局可变变量当事实来源。

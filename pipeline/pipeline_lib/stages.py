@@ -178,7 +178,7 @@ def _overlay_rec(ctx):
     return manifest.file_rec(p) if os.path.exists(p) else {"path": p, "sha256": None, "bytes": None}
 
 
-def _ensure_server(ctx, model=None):
+def _ensure_server(ctx, model=None, stage="03_translate"):
     """启动 llama-server（幂等），并**按引擎校验模型**。KIKOERU_SLOTS 进环境，影响确定性，记进参数。
 
     model: 要哪个模型（serve.py 的 key）。默认取 cfg["engine"]（03 初译用）。
@@ -188,6 +188,9 @@ def _ensure_server(ctx, model=None):
     2026-10-28 事故（R153）：原来调 `serve.py start` 不带模型 → 按显存自动选 q5（Qwen2.5），
     而 translate.py 因 KIKOERU_ENGINE=hymt 用 HY-MT 的裸指令 → 英文/拒答/日文残留混进初译。
     改调 `serve.py ensure --<engine>`：端口上模型对不上就重启，起完再校验一次。
+
+    stage: 日志落在哪个阶段目录。04 也调本函数，日志不能再写进 03（R154 实测两段
+    输出混在 `03_translate/serve.log` 里，`tail` 只能看到最后一次，排障时误导）。
     """
     slots = ctx.cfg.get("slots")
     if slots:
@@ -199,13 +202,15 @@ def _ensure_server(ctx, model=None):
     if ctx.dry:
         print("[dry] " + " ".join(cmd))
         return
-    code, tail, _ = _tee(cmd, ctx.log("03_translate", "serve.log"), env=ctx.env)
+    code, tail, _ = _tee(cmd, ctx.log(stage, "serve.log"), env=ctx.env)
     if code != 0:
         raise RuntimeError("推理服务启动失败（引擎 %s）" % (key or "auto"))
     m = re.search(r"模型校验通过：(.+)", tail or "")
     if key and not m:
         raise RuntimeError("推理服务未通过模型校验（期望引擎 %s）" % key)
     ctx.extra_server_model = m.group(1).strip() if m else None
+    print("[%s] 实际加载模型：%s（声明引擎 %s）"
+          % (stage, ctx.extra_server_model or "未知", key or "auto"), flush=True)
 
 
 # ---------------------------------------------------------------- 各阶段
@@ -317,7 +322,7 @@ def stage_translate(ctx):
 def stage_polish(ctx):
     # 润色必须用**能听指令的聊天模型**（Qwen），不能用初译的 HY-MT：
     # polish 的输入是「20 条规则 + 术语表 + 编号协议」，纯翻译模型会把它当待译文本。
-    _ensure_server(ctx, ctx.cfg.get("polish_engine") or "q5")
+    _ensure_server(ctx, ctx.cfg.get("polish_engine") or "q5", stage="04_polish")
     asr = effective_asr(ctx)
     draft = ctx.draft_dir()
     out = ctx.out_dir()
@@ -348,7 +353,9 @@ def stage_polish(ctx):
                      "loss_notes": losses[:5]},
             "extra": {"tracks": n, "lines": lines,
                       "lock_overrides": int(m.group(1)) if m else None,
-                      "allow_loss": bool(ctx.cfg.get("allow_loss"))}}
+                      "allow_loss": bool(ctx.cfg.get("allow_loss")),
+                      # R153 的事故就是「04 实际加载的模型 ≠ 声明」，必须逐 run 留证
+                      "server_model": getattr(ctx, "extra_server_model", None)}}
 
 
 def stage_term_lock(ctx):
@@ -424,6 +431,17 @@ GATE_DEFS = {
     "slot_guard": {"hard": False, "cmd": lambda ctx, d: [
         ctx.py, _script("slot_guard.py"), effective_asr(ctx), ctx.draft_dir(),
         final_dir(ctx), "--report", os.path.join(d, "slot_guard.json")]},
+    # 语义覆盖（P2，2026-10-28）：原文出现的具体物被中文泛化成公文腔
+    # （おしっこ→排泄行为、ちんこ→那个部位）时，check/scan/trunc 三道全放过。
+    # ⚠️ 现在是**参考项**：loss 档已知 8 条未修（全库 23416 行），
+    #    先报不改，等 `--fix` 清完再提成硬门禁（与 trunc 同一条升级路径）。
+    "semantic": {"hard": False, "cmd": lambda ctx, d: [
+        ctx.py, _script("semantic_coverage.py"),
+        # --lrc 要的是「含 RJ*/ 的父目录」；--asr 要的是「含 <RJ>/asr 的父目录」
+        "--lrc", os.path.dirname(final_dir(ctx)),
+        "--asr", os.path.join(ctx.run.dir, "01_asr"),
+        "--rj", ctx.project,
+        "--json", os.path.join(d, "semantic_coverage.json")]},
 }
 
 
@@ -487,6 +505,11 @@ def _summarize(gate, tail, code, d=""):
             return "%d 条（参考）" % n
         except Exception:
             return "通过" if code == 0 else "失败"
+    if gate == "semantic":
+        m = re.search(r"违规\s*(\d+)\s*条（其中真信息丢失 loss\s*(\d+)\s*条", tail)
+        if m:
+            return "%s 条（loss %s）" % (m.group(1), m.group(2))
+        return "通过" if code == 0 else "失败"
     return "通过" if code == 0 else "失败"
 
 
@@ -532,6 +555,7 @@ STAGES = {
                  "term_repair.py", "term_lock.py"],
         "run": stage_polish,
         "params": lambda ctx: {"slots": ctx.cfg.get("slots"),
+                               "polish_engine": ctx.cfg.get("polish_engine", "q5"),
                                "cue_pipeline": int(ctx.cfg.get("cue_pipeline", 1)),
                                "allow_loss": bool(ctx.cfg.get("allow_loss")),
                                "spk_prefix": bool(ctx.cfg.get("spk_prefix")),
@@ -550,10 +574,10 @@ STAGES = {
         "inputs": lambda ctx: [manifest.dir_rec(ctx.out_dir(), "*.lrc")],
     },
     "06_checks": {
-        "desc": "门禁（check / scan / errata / 回归 / 覆盖层）", "gpu": False,
-        "knowledge": ["asr_errata.json", "glossary.json", "stats.json"],
+        "desc": "门禁（check / scan / errata / 回归 / 覆盖层 / 语义覆盖）", "gpu": False,
+        "knowledge": ["asr_errata.json", "glossary.json", "stats.json", "coverage.json"],
         "code": ["check.py", "empty_check.py", "scan_violations.py", "errata_audit.py",
-                 "test_regressions.py", "repair_overlay.py"],
+                 "test_regressions.py", "repair_overlay.py", "semantic_coverage.py"],
         "run": stage_checks,
         "params": lambda ctx: {"gates": ctx.cfg.get("_gates")},
         "inputs": lambda ctx: [manifest.dir_rec(final_dir(ctx), "*.lrc")],
@@ -564,7 +588,7 @@ ORDER = ["01_asr", "02_asr_fix", "03_translate", "04_polish", "05_term_lock", "0
 
 
 # ---------------------------------------------------------------- 执行
-def _miss_reason(prev, fp, params, inputs, know, code):
+def _miss_reason(prev, fp, params, inputs, know, code, models=None):
     if not prev:
         return "首次运行"
     if prev.get("status") not in ("ok", "imported"):
@@ -579,6 +603,15 @@ def _miss_reason(prev, fp, params, inputs, know, code):
         why.append("知识表变了")
     if json.dumps(prev.get("inputs"), sort_keys=True) != json.dumps(inputs, sort_keys=True):
         why.append("输入变了")
+    # 模型也进指纹（R153 的教训：声明 hymt 实际跑 Qwen）。漏了这一条，
+    # 换 gguf 时只会得到一句「指纹不符」，看不出到底哪里变了。
+    if models is not None and json.dumps(prev.get("models"), sort_keys=True) \
+            != json.dumps(models, sort_keys=True):
+        why.append("模型变了")
+    # 执行层（pipeline_lib/*.py）变了：默认引擎、门禁清单、_ensure_server 行为都在这里。
+    # 不单列一条，改执行层只会得到一句「指纹不符」，看不出是不是真重跑过。
+    if prev.get("runner") and prev.get("runner") != FP.runner_hash():
+        why.append("执行层代码变了")
     return "；".join(why) or "指纹不符"
 
 
@@ -599,11 +632,13 @@ def execute(run, name, cfg, force=False, dry=False):
               % (name, prev.get("ended_at", "?"), spec["desc"]))
         return True
 
-    reason = "强制重跑" if force else _miss_reason(prev, fp, params, inputs, know, code)
+    reason = "强制重跑" if force else _miss_reason(prev, fp, params, inputs, know, code,
+                                                 models=models)
     print("\n[%s] ▶ %s%s" % (name, spec["desc"], "" if dry else "（%s）" % reason))
     run.begin_stage(name, params, inputs, know, code, cache_miss_reason=reason,
                     extra={"config_hash": FP.config_hash(ctx.cfg),
                            "env": FP.env_whitelist(ctx.cfg),
+                           "runner": FP.runner_hash(),
                            "models": models})
     try:
         res = spec["run"](ctx)

@@ -35,11 +35,16 @@ GGUF = {
 }
 WHISPER_NAME = "faster-whisper-large-v3"
 
-# 每个阶段实际用到的模型（最小闭包）
+# 每个阶段实际用到的模型（最小闭包）。**空列表 = 该阶段不调模型**：
+# 02/05/06 是纯确定性阶段，以前 names=None 会把 whisper + 全部 gguf 都算进指纹，
+# 于是「换一个没被用到的 gguf」也会让它们全量重跑（R154 实测的假 cache miss）。
 MODELS_BY_STAGE = {
     "01_asr": ["whisper"],
+    "02_asr_fix": [],
     "03_translate": ["gguf_hymt", "gguf_qwen_q5", "gguf_qwen_q4"],
     "04_polish": ["gguf_hymt", "gguf_qwen_q5", "gguf_qwen_q4"],
+    "05_term_lock": [],
+    "06_checks": [],
 }
 
 
@@ -92,6 +97,8 @@ def model_records(cfg, stage=None):
     """模型指纹：{逻辑名: {path, exists, bytes, mtime}}。stage 给了就只取该阶段用到的。"""
     names = MODELS_BY_STAGE.get(stage) if stage else None
     out = {}
+    if names == []:
+        return out          # 该阶段不调模型（02/05/06）—— 指纹里不该出现任何 gguf
     if names is None or "whisper" in names:
         out["whisper"] = {"name": WHISPER_NAME, "path": None, "exists": True,
                           "bytes": None, "mtime": None}
@@ -108,6 +115,32 @@ def _stable_inputs(inputs):
     return sorted(list(inputs), key=lambda x: _canon(x))
 
 
+# ---- 管线自身的代码也要进指纹（R154）----
+# 各阶段的 `code` 只登记**被该阶段调用的脚本**，`pipeline_lib/*` 不在里面。
+# 于是改 stages.py（比如默认引擎、门禁清单、_ensure_server 的行为）时，
+# 指纹一点不变 → 旧产物照样「缓存命中」→ 改动等于没生效。
+# 这和 R153 是同一类错误：**改了执行层，产物看不出来**。
+_RUNNER = [None]
+
+
+def runner_hash():
+    """pipeline_lib/*.py 的聚合哈希（不含 __pycache__）。"""
+    if _RUNNER[0]:
+        return _RUNNER[0]
+    d = os.path.dirname(os.path.abspath(__file__))
+    parts = []
+    for fn in sorted(os.listdir(d)):
+        if not fn.endswith(".py"):
+            continue
+        p = os.path.join(d, fn)
+        try:
+            parts.append("%s:%s" % (fn, hashlib.sha256(open(p, "rb").read()).hexdigest()))
+        except OSError:
+            continue
+    _RUNNER[0] = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+    return _RUNNER[0]
+
+
 def stage_fingerprint(stage, params, inputs, knowledge, code, cfg, models=None):
     payload = {
         "stage": stage,
@@ -118,6 +151,7 @@ def stage_fingerprint(stage, params, inputs, knowledge, code, cfg, models=None):
         "inputs": _stable_inputs(inputs),
         "knowledge": knowledge,
         "code": code,
+        "runner": runner_hash(),
         "models": models if models is not None else model_records(cfg, stage),
     }
     return hashlib.sha256(_canon(payload).encode("utf-8")).hexdigest()
@@ -145,6 +179,7 @@ def _selftest():
     ok.append(("params 变化 → 指纹变", fp1 != fp2))
     ok.append(("inputs 顺序不影响指纹", fp1 == fp3))
 
+    ok.append(("runner_hash 稳定且非空", bool(runner_hash()) and runner_hash() == runner_hash()))
     for name, good in ok:
         print("  %s %s" % ("✅" if good else "❌", name))
     n = sum(1 for _, g in ok if g)
