@@ -43,6 +43,7 @@ import os
 import re
 import sys
 
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT",
                       os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -61,7 +62,7 @@ ZH_BARE = re.compile(
 
 
 def candidates(lrc_root=None):
-    lrc_root = lrc_root or os.path.join(ROOT, "kikoerusubtitle")
+    lrc_root = lrc_root or rootloc.PROD
     out = []
     for p in sorted(glob.glob(os.path.join(lrc_root, "RJ*", "*.lrc"))):
         rj = os.path.basename(os.path.dirname(p))
@@ -90,7 +91,7 @@ def candidates(lrc_root=None):
 
 def apply(plan, lrc_root=None, dry=False):
     """按白名单合并。只删「这一行」，把中文接到上一行；时间戳逐字节不动。"""
-    lrc_root = lrc_root or os.path.join(ROOT, "kikoerusubtitle")
+    lrc_root = lrc_root or rootloc.PROD
     by_file = {}
     for it in plan:
         by_file.setdefault((it["rj"], it["track"]), []).append(it)

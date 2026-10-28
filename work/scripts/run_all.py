@@ -21,6 +21,7 @@ r"""
 """
 import os
 import sys
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
 sys.stdout.reconfigure(encoding="utf-8")
 import glob
 import time
@@ -75,7 +76,7 @@ def main():
     draft = os.path.join(ROOT, "data", "draft", a.name)
     asr_dir = os.path.join(draft, "asr")
     draft_dir = os.path.join(draft, "draft")
-    out_dir = os.path.join(ROOT, "kikoerusubtitle", a.name)
+    out_dir = os.path.join(rootloc.PROD, a.name)
     # 有台本时：ASR 原始结果单独放 asr_raw（当时间锚点，保留可复查），
     # 打轴产物写回 asr/ —— 下游 translate/polish 完全不用改。
     has_script = bool(a.script_dir) and os.path.isdir(a.script_dir)

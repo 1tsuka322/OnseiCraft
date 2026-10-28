@@ -19,6 +19,7 @@
 """
 import os
 import sys
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
 sys.stdout.reconfigure(encoding="utf-8")
 import json
 import time
@@ -170,7 +171,7 @@ def main():
     print("  2) python translate.py %s %s" % (recdir, os.path.join(ROOT, "data", "draft", a.rj, "draft_rec")))
     print("  3) python polish.py %s %s %s" % (recdir,
           os.path.join(ROOT, "data", "draft", a.rj, "draft_rec"),
-          os.path.join(ROOT, "kikoerusubtitle_rec", a.rj)))
+          os.path.join(rootloc.REC, a.rj)))
     print("  4) python recover_splice.py splice --work %s --apply" % a.rj)
 
 

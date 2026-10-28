@@ -48,7 +48,8 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 可用 KIKOERU_LRC_ROOT 指向别的成品目录（做 A/B 对照时扫另一组输出）
-OUT_ROOT = os.environ.get("KIKOERU_LRC_ROOT", os.path.join(ROOT, "kikoerusubtitle"))
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
+OUT_ROOT = os.environ.get("KIKOERU_LRC_ROOT") or rootloc.PROD
 ASR_ROOT = os.path.join(ROOT, "data/draft")
 DEF_OUT = os.path.join(ROOT, "regset")
 PUNCT = "。、，,.!！?？…♪~〜ー♡ \u3000「」『』（）()"

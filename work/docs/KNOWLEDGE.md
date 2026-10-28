@@ -45,7 +45,7 @@
 ## 加条目的流程
 
 ```bash
-P="python pipeline/pipeline.py"
+P="python work/pipeline/pipeline.py"
 
 # 1) 写提案（不要直接改生产表）
 $P knowledge propose --file my_rule.json
@@ -67,7 +67,7 @@ $P knowledge status
 每条规则必须带**反例**。只给正例的规则一定会误杀。
 
 ```bash
-python scripts/errata_audit.py --test     # 逐条跑正例/反例
+python work/scripts/errata_audit.py --test     # 逐条跑正例/反例
 ```
 
 分两级，看你的语料覆盖：

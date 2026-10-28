@@ -48,7 +48,7 @@
 ⚠️ 这张表和风格术语表是**两件事**，别合并：`glossary` 管「更偏好怎么说」（肉棒 vs 鸡巴），  
 `coverage` 管「原文出现就不能丢什么」。前者违反只是风格不一致，后者违反是信息丢失。
 
-`python scripts/semantic_coverage.py --lrc <目录> --asr data/draft --verbose` 出清单；  
+`python work/scripts/semantic_coverage.py --lrc <目录> --asr data/draft --verbose` 出清单；  
 `--fix --apply` 走一次定向修复（每条一次 Qwen 调用，仍不过就按 `swap` 表确定性替换/告警）。
 
 ### `empty` 为什么要单独立一项

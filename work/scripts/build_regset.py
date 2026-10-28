@@ -37,7 +37,8 @@ import argparse
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-OUT_ROOT = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "kikoerusubtitle")
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
+OUT_ROOT = os.environ.get("KIKOERU_LRC_ROOT") or rootloc.PROD
 ASR_ROOT = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "draft")
 DEF_OUT = os.path.join(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "regset")
 

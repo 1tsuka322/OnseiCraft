@@ -66,7 +66,8 @@ import sys
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OVL = os.path.join(ROOT, "data/repair_overlay")
-LRC = os.path.join(ROOT, "kikoerusubtitle")
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
+LRC = os.environ.get("KIKOERU_PROD") or rootloc.PROD
 LOCKS = os.path.join(ROOT, "data/locks")
 BAK = os.path.join(ROOT, "data/tmp/lrc_backup_fixline")
 sys.stdout.reconfigure(encoding="utf-8")

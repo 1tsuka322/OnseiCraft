@@ -1,35 +1,39 @@
 # 数据与内部资料：全部不进版本库
 # —— 音频/成品/语料/锁/台账都是从他人作品派生的内容，公开有版权风险；
 #    内部台账里还含大量露骨例句与真实作品号。
+#
+# 2026-10-28 目录改成三层：
+#   <repo>/README.md
+#   <repo>/ASMRmusic/          原始音频
+#   <repo>/kikoerusubtitle/    交付成品
+#   <repo>/work/               全部工作文件（代码 + 文档 + 数据 + 运行产物 + 临时）
+# 下面的模式都**不带前导斜杠**，所以在任意层级都匹配（work/data/ 也算）。
 
-# 原始音频（每部作品一个 RJ 目录）
-RJ[0-9]*/
-# 2026-10-28：音频统一归到 ASMRmusic/ 下（每部一个 RJ 子目录），同样不进版本库
+# ---- 仓库根：音频与成品 ----
 ASMRmusic/
-
-# 成品字幕与回收站
+RJ[0-9]*/
 kikoerusubtitle/
+# 成品回收站留在 work/ 里
 kikoerusubtitle_rec/
 
-# 暂存与试听材料
-learning/
-listen_*/
-
+# ---- work/ 下的数据与运行产物 ----
 # 中间产物 / 语料 / 回归集 / 锁 / 覆盖层 / 风格库 / 模型
 data/
-# 平行语料/术语表/句级锁：不随仓库分发（后续封装进软件）
+# 平行语料/术语表/句级锁：不随仓库分发
 assets/
-.workbuddy-ai/
-
 # 运行产物
 runs/
 regset/
 knowledge/
+# 临时文件（脚本、一次性 JSON、试听包、抓取中间态）
 tmp/
 tools/
-
+learning/
+listen_*/
 # 内部台账（文档、SKILL.md、ID 映射）
 internal/
+# 工作区记忆
+.workbuddy-ai/
 
 # Python
 __pycache__/

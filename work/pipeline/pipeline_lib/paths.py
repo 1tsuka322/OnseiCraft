@@ -1,10 +1,26 @@
 # -*- coding: utf-8 -*-
-"""路径与全局配置（单一出口，别在别处硬编码 ROOT）。"""
+"""路径与全局配置（单一出口，别在别处硬编码 ROOT）。
+
+2026-10-28 起仓库是**三层**结构，本文件是唯一换算点：
+
+```
+<repo>/                     仓库根（只放 README + 三个目录）
+├── ASMRmusic/              原始音频（不进库）
+├── kikoerusubtitle/        交付成品 LRC（不进库）
+└── work/                   ← ROOT：全部工作文件（代码/文档/数据/运行产物/临时）
+```
+
+`ROOT` 由本文件的物理位置反推（`work/pipeline/pipeline_lib/paths.py` 上三级），
+所以 `work/` 整个搬走也不会算错；只有 `PROD`/`AUDIO` 这两个**在 work 外面**的目录
+需要 `BASE = dirname(ROOT)`。想彻底换地方就设 `KIKOERU_ROOT` / `KIKOERU_PROD` / `KIKOERU_AUDIO`。
+"""
 import json
 import os
 import sys
 
 ROOT = os.path.abspath(os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+# 仓库根 = work 的上一级。ASMRmusic / kikoerusubtitle 挂在这一层。
+BASE = os.path.dirname(ROOT)
 
 SCRIPTS = os.path.join(ROOT, "scripts")
 # 风格库/知识表：环境变量 → 本地真实库（含平行语料，不入库）→ 公开预设 presets/
@@ -14,7 +30,11 @@ _LOCAL_STYLE = os.path.join(ROOT, "data", "style")
 STYLE = (os.environ.get("KIKOERU_STYLE")
          or (_LOCAL_STYLE if os.path.isdir(_LOCAL_STYLE) else _PRESETS))
 DRAFT = os.path.join(ROOT, "data", "draft")
-PROD = os.environ.get("KIKOERU_PROD", os.path.join(ROOT, "kikoerusubtitle"))
+# 成品与音频都在 work 外面（仓库根），别用 ROOT 拼。
+PROD = os.environ.get("KIKOERU_PROD", os.path.join(BASE, "kikoerusubtitle"))
+AUDIO = os.environ.get("KIKOERU_AUDIO", os.path.join(BASE, "ASMRmusic"))
+# 成品回收站留在 work 里（它是工作产物，不是交付物）
+REC = os.environ.get("KIKOERU_REC", os.path.join(ROOT, "kikoerusubtitle_rec"))
 LOCKS = os.path.join(ROOT, "data", "locks")
 OVERLAY = os.path.join(ROOT, "data", "repair_overlay")
 

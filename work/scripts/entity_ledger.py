@@ -58,6 +58,7 @@ import re
 import sys
 import glob
 import json
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -352,7 +353,7 @@ def build_ledger(rj, meta_path, asr_dir):
 
 def find_meta_for(rj, roots=None):
     """在若干候选根下找 <rj>/meta.md。"""
-    roots = roots or ["kikoerusubtitle"]
+    roots = roots or [rootloc.PROD]
     for r in roots:
         p = os.path.join(r, rj, "meta.md")
         if os.path.exists(p):
@@ -360,12 +361,12 @@ def find_meta_for(rj, roots=None):
     return None
 
 
-def ledger_for_draft(draft_dir, work_root="kikoerusubtitle"):
+def ledger_for_draft(draft_dir, work_root=None):
     """从 <work>/draft_xxx 目录推作品号并建账本。"""
     draft_dir = os.path.abspath(draft_dir)
     rj = os.path.basename(os.path.dirname(draft_dir))
     asr_dir = os.path.join(os.path.dirname(draft_dir), "asr")
-    meta = find_meta_for(rj, [work_root])
+    meta = find_meta_for(rj, [work_root] if work_root else None)
     return build_ledger(rj, meta, asr_dir)
 
 
@@ -416,7 +417,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(description="构建/预览作品级实体账本")
     ap.add_argument("rj", help="作品号，如 RJ9000016")
-    ap.add_argument("--meta-root", default="kikoerusubtitle")
+    ap.add_argument("--meta-root", default="")
     ap.add_argument("--asr-dir", default="",
                     help="ASR json 目录（默认 data/draft/<rj>/asr）")
     ap.add_argument("--dump", default="", help="写出到该 json 路径")

@@ -26,26 +26,30 @@ jobs:
           python -m pip install numpy janome zhconv
 
       - name: Pipeline selftest (13 checks, no data required)
-        run: python pipeline/pipeline.py selftest
+        run: python work/pipeline/pipeline.py selftest
 
       - name: Empty-subtitle gate selftest (4 cases)
-        run: python scripts/empty_check.py --selftest
+        run: python work/scripts/empty_check.py --selftest
 
       # 回归门禁在「无数据」下必须全过（数据依赖用例自动跳过）。
       # 这条能防止有人把「缺数据」写回成「判失败」——那会让协作者 clone 下来一片红。
       - name: Regression gate (must pass without any data)
-        run: python scripts/test_regressions.py
+        run: python work/scripts/test_regressions.py
 
       # 错字表门禁：无语料时应报 SKIP 并 exit 0
       - name: Errata gate (skips without corpus)
-        run: python scripts/errata_audit.py --test
+        run: python work/scripts/errata_audit.py --test
 
       # 自带的样例必须能通过自己的检查器（否则发出去就是个坏例子）
       - name: Shipped example passes our own checker
-        run: python scripts/check.py examples
+        run: python work/scripts/check.py work/examples
+
+      # 语义覆盖门禁自检（9 用例，不需要语料）
+      - name: Semantic-coverage gate selftest (9 cases)
+        run: python work/scripts/semantic_coverage.py --selftest
 
       - name: Byte-compile everything
-        run: python -m compileall -q pipeline scripts
+        run: python -m compileall -q work/pipeline work/scripts
 
   leak-guard:
     runs-on: ubuntu-latest
@@ -60,11 +64,11 @@ jobs:
           if [ -n "$hit" ]; then
             echo "$hit"; echo "::error::音频/模型文件被提交了"; fail=1
           fi
-          hit=$(git ls-files | grep -E '^(RJ[0-9]|kikoerusubtitle|runs|regset|knowledge|tmp|internal|data|assets)' | head -5 || true)
+          hit=$(git ls-files | grep -E '^(work/)?(RJ[0-9]|kikoerusubtitle|runs|regset|knowledge|tmp|internal|data|assets)' | head -5 || true)
           if [ -n "$hit" ]; then
             echo "$hit"; echo "::error::数据或内部台账被提交了（应被 .gitignore 挡住）"; fail=1
           fi
-          hit=$(git ls-files '*.lrc' | grep -v '^examples/' | head -5 || true)
+          hit=$(git ls-files '*.lrc' | grep -v '^work/examples/' | head -5 || true)
           if [ -n "$hit" ]; then
             echo "$hit"; echo "::error::成品字幕被提交了（examples/ 下的合成样例除外）"; fail=1
           fi

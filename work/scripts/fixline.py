@@ -40,7 +40,8 @@ sys.path.insert(0, SCRIPTS)
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DRAFT = os.path.join(ROOT, "data", "draft")
-PROD = os.path.join(ROOT, "kikoerusubtitle")
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
+PROD = os.environ.get("KIKOERU_PROD") or rootloc.PROD
 BAK = os.path.join(ROOT, "data", "tmp", "lrc_backup_fixline")
 TS_RE = re.compile(r"^\[(\d+):([\d.]+)\](.*)$")
 

@@ -4,7 +4,7 @@
 
 ```bash
 python -m pip install -r requirements.txt
-python pipeline/pipeline.py selftest      # 13 项，不需要任何数据
+python work/pipeline/pipeline.py selftest      # 13 项，不需要任何数据
 ```
 
 `selftest` 全过 = 环境没问题。它覆盖：阶段失败传播、断点续跑、指纹失效、
@@ -28,7 +28,7 @@ promote 拒绝遗留文件、锁的 token 语义、05 必须是独立目录。
 
 1. 在 `docs/KNOWLEDGE.md` 里确认它属于哪张表（错字 / 术语 / 允许集）；
 2. 写**正例 + 反例**各至少 3 条（反例是必须的：只给正例的规则一定会误杀）；
-3. 跑 `python scripts/errata_audit.py --test`（或对应自检）；
+3. 跑 `python work/scripts/errata_audit.py --test`（或对应自检）；
 4. PR 描述里贴自检输出原文。
 
 ## 加一个门禁
@@ -41,7 +41,7 @@ promote 拒绝遗留文件、锁的 token 语义、05 必须是独立目录。
 
 ## PR 检查表
 
-- [ ] `python pipeline/pipeline.py selftest` 全过
+- [ ] `python work/pipeline/pipeline.py selftest` 全过
 - [ ] 新增/修改的脚本有自己的自检，且自检输出贴进了 PR
 - [ ] 没有提交 `data/` 下的任何文件
 - [ ] 改动影响产物时，`pipeline/VERSION` 与 `CHANGELOG.md` 已更新

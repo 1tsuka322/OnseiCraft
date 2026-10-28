@@ -26,7 +26,8 @@ import argparse
 import datetime
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-PROD = os.path.join(ROOT, "kikoerusubtitle")
+import rootloc  # noqa: E402  仓库三层结构：work/ 里，成品/音频在上一级
+PROD = os.environ.get("KIKOERU_PROD") or rootloc.PROD
 DRAFT = os.path.join(ROOT, "data", "draft")
 LOCKS = os.path.join(ROOT, "data", "locks")
 TS = re.compile(r"^\[(\d+):([\d.]+)\](.*)$")

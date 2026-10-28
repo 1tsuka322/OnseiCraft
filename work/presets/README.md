@@ -58,7 +58,7 @@
 export KIKOERU_STYLE=/path/to/my_style
 
 # 从自己的语料重建风格库
-python scripts/style/build_library.py <你的语料目录>
+python work/scripts/style/build_library.py <你的语料目录>
 ```
 
 管线内部顺序：`KIKOERU_STYLE` → `<repo>/data/style` → `<repo>/presets`。

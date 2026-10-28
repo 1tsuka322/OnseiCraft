@@ -1,9 +1,9 @@
-# 管线（`pipeline/pipeline.py`）
+# 管线（`work/pipeline/pipeline.py`）
 
 ## 命令
 
 ```bash
-P="python pipeline/pipeline.py"
+P="python work/pipeline/pipeline.py"
 
 $P run     --project RJ0000001 --source /path/to/audio   # 跑一部（自动串六阶段）
 $P run     --run <run_id> --from 03_translate           # 断点续跑

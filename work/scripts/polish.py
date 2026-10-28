@@ -1457,7 +1457,7 @@ def load_ledger(draft_dir=None):
         rj = os.path.basename(parent)
         # 作品根：draft_dir 的父目录再往上找 meta.md（kikoerusubtitle/<rj>/meta.md）
         root = os.path.dirname(parent)
-        meta = el.find_meta_for(rj, [root, "kikoerusubtitle"])
+        meta = el.find_meta_for(rj, [root, os.path.join(os.path.dirname(root), "kikoerusubtitle")])
         asr = os.path.join(parent, "asr")
         if rj:
             _LEDGER = el.build_ledger(rj, meta, asr)

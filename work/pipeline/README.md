@@ -28,12 +28,12 @@ pipeline/
 PY="C:/Users/zyk/data/binaries/python/envs/default/Scripts/python.exe"
 cd $KIKOERU_ROOT
 
-"$PY" pipeline/pipeline.py version          # 看版本
-"$PY" pipeline/pipeline.py selftest         # 13 条断言（沙箱内跑，不碰生产）
-"$PY" pipeline/pipeline.py status           # 有哪些 run、跑到哪
-"$PY" pipeline/pipeline.py run --project RJxxxxxxx --source $KIKOERU_ROOT/RJxxxxxxx/mp3
-"$PY" pipeline/pipeline.py check --run <run_id>
-"$PY" pipeline/pipeline.py promote --run <run_id> --dry-run
+"$PY" work/pipeline/pipeline.py version          # 看版本
+"$PY" work/pipeline/pipeline.py selftest         # 13 条断言（沙箱内跑，不碰生产）
+"$PY" work/pipeline/pipeline.py status           # 有哪些 run、跑到哪
+"$PY" work/pipeline/pipeline.py run --project RJxxxxxxx --source ASMRmusic/RJxxxxxxx
+"$PY" work/pipeline/pipeline.py check --run <run_id>
+"$PY" work/pipeline/pipeline.py promote --run <run_id> --dry-run
 "$PY" pipeline/tools/dashboard.py           # 生成 runs/dashboard.html
 ```
 
