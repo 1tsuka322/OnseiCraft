@@ -108,6 +108,7 @@ def build(run_dir, track_filter=None):
         # 否则一张表里 40% 是噪音（实测 1163 行里 484 行是 spacer）。
         # 配对窗口也改成「到下一行**有内容**的行」，否则 spacer 的日文会串到别处。
         keep = [i for i, (_t, x) in enumerate(rows) if x]
+        prev_zh = None
         for pos, i in enumerate(keep):
             t, text = rows[i]
             t1 = rows[keep[pos + 1]][0] if pos + 1 < len(keep) else t + 3
@@ -165,6 +166,11 @@ def build(run_dir, track_filter=None):
             if (text in ("…", "……") and ja_raw
                     and re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", ja_raw)):
                 flags.append("masked")
+            # 承接行把上一行的整句中文原样复制一遍（实测 1 处：一句日文被拆成
+            # 两个时间戳，但中文没跟着切）。这是**显示层**的问题，不是翻译错。
+            if prev_zh is not None and text and text == prev_zh and not ja_raw:
+                flags.append("dup_cont")
+            prev_zh = text
             rows_all.append({"track": track, "t": t, "ja": ja_raw, "n": pos + 1,
                              "ja_clean": ja_clean, "zh": text,
                              "flags": flags})
@@ -267,6 +273,7 @@ def main():
 | `short` | 中文字数 < 日文 40% → **可能漏译，重点看** |
 | `long` | 中文字数 > 日文 200% → 可能注水 |
 | `cont` | 承接上一行（一句 ASR 被拆成多行字幕），日文见上一行 |
+| `dup_cont` | 承接行的中文与上一行**完全相同** → 显示层没把中文切开 |
 """)
     for track, rs in by_track.items():
         lines.append("\n## %s\n" % track)

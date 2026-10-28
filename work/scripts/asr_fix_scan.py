@@ -440,16 +440,34 @@ def auto_apply_errata(draft, src_dir, fix_dir):
     另：`works` 限定作用域（作品号列表）；`boundary: false` 可关掉汉字邻接检查（默认开）。
     """
     import re as _re
+    import hashlib
     errata = [e for e in load_errata() if e.get("ja") and e.get("fix")]
     if not errata or not os.path.isdir(src_dir):
         return 0
     work = os.path.basename(os.path.dirname(os.path.abspath(src_dir)))
+    # 知识表指纹：用来判断 fix/ 里的旧产物是不是按当前表算的。
+    # ⚠️ 以前这里是「fix 里已有同名文件就 continue」——**知识表更新后重跑 02
+    #    等于什么都没做**（R154 实测：新增 9 条 errata，applied=0、files_touched=0，
+    #    而日志还写着「知识表变了，重跑」）。这就是又一个「声明 ≠ 实际」。
+    errata_hash = hashlib.md5(
+        "|".join(sorted("%s→%s" % (e.get("ja", ""), e.get("fix", ""))
+                        for e in errata)).encode("utf-8")).hexdigest()[:12]
     os.makedirs(fix_dir, exist_ok=True)
     n_total = 0
     for p in sorted(glob.glob(os.path.join(src_dir, "*.json"))):
         name = os.path.basename(p)
-        if os.path.exists(os.path.join(fix_dir, name)):
-            continue
+        dst = os.path.join(fix_dir, name)
+        manual = []
+        if os.path.exists(dst):
+            try:
+                old = json.load(open(dst, encoding="utf-8"))
+            except Exception:
+                old = {}
+            if (old.get("fix_meta") or {}).get("errata_hash") == errata_hash:
+                continue        # 表没变，跳过（增量语义保留）
+            # 表变了 → 重做；但 `--apply-fix` 落地的人工修正必须留下
+            manual = [sg for sg in (old.get("segments") or [])
+                      if (sg.get("fix_log") or {}).get("rule") == "人工"]
         try:
             src = json.load(open(p, encoding="utf-8"))
         except Exception:
@@ -523,9 +541,20 @@ def auto_apply_errata(draft, src_dir, fix_dir):
                 tx = new
                 n += 1
                 ERRATA_STATS["applied"] += 1
+        if manual:
+            # 人工修正优先级最高：按起点覆盖回去（词级时间戳已对不上新文本，清掉）
+            by_start = {round(float(x.get("start", 0)), 2): x for x in segs}
+            for m in manual:
+                k = round(float(m.get("start", 0)), 2)
+                if k in by_start:
+                    by_start[k]["text"] = m.get("text")
+                    by_start[k]["fix_log"] = m.get("fix_log")
+                    asr_words.clear_words(by_start[k])
+            n += len(manual)
         if n:
             src["segments"] = segs
             src["fix_meta"] = {"applied": n, "source": "asr_errata.json",
+                               "errata_hash": errata_hash,
                                "time": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")}
             json.dump(src, open(os.path.join(fix_dir, name), "w", encoding="utf-8"),
                       ensure_ascii=False, indent=1)
