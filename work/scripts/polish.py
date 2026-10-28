@@ -2287,7 +2287,12 @@ def main():
         # 整句只有拟声/气声 + 标点、且每段都在 ZH_MAP 里 → 直接用表值。
         # 为什么值得：这类句子过 7B 只会引入波动（`はぁ` 有时「哈」有时「啊」），
         # 而且白花一次采样。全库 2.26%（498/22064）属这一类。
-        if MASK is not None and getattr(MASK, "DETERMINISTIC", False) and not a.cleanup_only:
+        # 2026-10-28 R154：**不再排除 --cleanup-only**。
+        # 原来写成 `... and not a.cleanup_only`，等于把「基于字典/正则的确定性遮蔽」
+        # 和「基于 LLM 的启发式润色」绑在一起一刀切了。走 Sakura 路线时（cleanup-only），
+        # 拟声 cue 就没人管了——而 Sakura 恰恰最怕纯拟声输入（会吐英文/复读）。
+        # 确定性规则无条件跑，LLM 才受开关控制。
+        if MASK is not None and getattr(MASK, "DETERMINISTIC", False):
             for _i, _ln in enumerate(lines):
                 _r = MASK.pure_nonlexical(_ln["text"])
                 if _r:
@@ -2327,7 +2332,12 @@ def main():
             # 再套我们为 Qwen 设计的润色 prompt 反而会坏——实测 Qwen 会把 Sakura 的结果
             # 整体错位一行（第 1 句被吞、后续全部前移）。
             results = list(olds)
-            print("    [cleanup-only] 跳过 LLM 润色，只做标点/格式归一", flush=True)
+            # ⚠️ 必须把 D9-3 的确定性结果放回去：`list(olds)` 会把它覆盖掉，
+            # 那样上面那条「确定性遮蔽无条件跑」就白改了。
+            for _i, _r in _det.items():
+                results[_i] = _r
+            print("    [cleanup-only] 跳过 LLM 润色，只做标点/格式归一"
+                  + ("（确定性遮蔽 %d 条仍生效）" % len(_det) if _det else ""), flush=True)
 
         def prev_ctx(i):
             """第 i 句之前的几句：日文 + 已润色的中文（没有就用初译）。"""
