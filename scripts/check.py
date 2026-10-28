@@ -23,6 +23,18 @@ except ImportError:
 JPN = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff]")
 NUM = re.compile(r"^\s*\d+\s*[|｜]")
 TS = re.compile(r"^\[(\d+):([\d.]+)\]")
+# 拉丁残留（2026-10-28 R153）。背景：管线声明 engine=hymt 却实际加载了 Qwen2.5，
+# 初译把片假名外来词、拟声、整句英文直接留在中文里（全库曾 115 行 / 16 部，
+# 例：`给 classmates 和 the parents who are paying tuition带来麻烦的事情`）。
+# 这里只做**参考级**告警，不计入失败——正常借词（LINE / cosplay / Pocky / ASMR）很多，
+# 一律判红会淹掉真问题。要收紧时把白名单调小即可。
+LATIN = re.compile(r"[A-Za-z]{3,}")
+LATIN_OK = {
+    "AV", "JK", "SM", "VIP", "OK", "NG", "BGM", "SE", "CM", "DVD", "ID", "HP", "TV",
+    "OL", "BBA", "NTR", "POV", "ASMR", "LINE", "cosplay", "Cosplay", "encore", "pino",
+    "Pocky", "play", "app", "sexy", "twin", "Honey", "COMMON", "Echopolis", "Bess",
+    "Damage", "BGM", "SM",
+}
 # 风格库位置统一由 styleloc 解析：环境变量 → data/style → presets（公开预设）
 import styleloc  # noqa: E402
 DEFAULT_STYLE = styleloc.style_dir()
@@ -46,7 +58,7 @@ def main():
 
     tot = {"lines": 0, "jp": 0, "num": 0, "empty": 0, "period": 0,
            "ell": 0, "ne": 0, "dun": 0, "len": 0, "trad": 0, "spacer": 0,
-           "half": 0}
+           "half": 0, "lat": 0}
     bad_files = []
     for p in files:
         # R23（坑 106）：空文本时间戳行 = 清屏 spacer（LRC 语义下行显示到下一行
@@ -64,7 +76,7 @@ def main():
                        l[m.end():].strip()))
         sp = {i for i, (_, t) in enumerate(rs) if not t
               and 0 < i < len(rs) - 1 and rs[i - 1][1] and rs[i + 1][1]}
-        ts, n, jp, num, emp, trad, half = [], 0, 0, 0, 0, 0, 0
+        ts, n, jp, num, emp, trad, half, lat = [], 0, 0, 0, 0, 0, 0, 0
         for i, (t0, t) in enumerate(rs):
             ts.append(t0)
             if i in sp:
@@ -99,15 +111,20 @@ def main():
                               0x3010: None, 0x3011: None, 0xFF08: None, 0xFF09: None})
             if zhconv and _t.strip() and zhconv.convert(_t, "zh-cn") != _t:
                 trad += 1
+            # 拉丁残留（参考级，不参与 flag）
+            if any(w.upper() not in LATIN_OK and w not in LATIN_OK
+                   for w in LATIN.findall(_t)):
+                lat += 1
+                tot["lat"] += 1
             tot["len"] += len(t)
         ok = all(ts[i] <= ts[i + 1] for i in range(len(ts) - 1))
         flag = "" if (ok and jp == 0 and num == 0 and emp == 0 and trad == 0
                       and half == 0) else "  <-- 需检查"
         if flag:
             bad_files.append(os.path.basename(p))
-        print("%-46s %4d 行  时间轴%s  日文%d  编号%d  空行%d 繁体%d  半角%d  清屏%d%s"
+        print("%-46s %4d 行  时间轴%s  日文%d  编号%d  空行%d 繁体%d  半角%d  拉丁%d  清屏%d%s"
               % (os.path.basename(p)[:44], n, "OK" if ok else "异常", jp, num, emp, trad,
-                 half, len(sp), flag))
+                 half, lat, len(sp), flag))
         tot["lines"] += n
         tot["jp"] += jp
         tot["num"] += num
@@ -120,6 +137,9 @@ def main():
           % (tot["lines"], tot["spacer"]))
     if tot["half"]:
         print("半角标点 %d 行（应统一为全角 ？！，）" % tot["half"])
+    if tot["lat"]:
+        print("拉丁残留 %d 行（参考级，不计入失败；正常借词请加进 LATIN_OK）"
+              % tot["lat"])
     if stats:
         def pc(k):
             return 100 * tot[k] / n
