@@ -114,7 +114,11 @@ def build(run_dir, track_filter=None):
             # 只取「在本行时间窗内**开始**」的 ASR 段。
             # 一句 ASR 常被拆成 2~3 行字幕；如果按「重叠」取，同一句日文会重复贴
             # 到每一行上，看起来像漏译（实测 108 行假 short 全是这么来的）。
-            segs_in = [sg for k, sg in sorted(a_src.items()) if t - 0.05 <= k < t1]
+            # ⚠️ 边界必须留 epsilon：`332.84 < 332.84` 在浮点下可能为真
+            # （LRC 时间戳是 float 运算出来的），会把**下一行**的段也吞进来，
+            # 造成「上一行日文包含下一行」的假象（外部审校据此误判成 ASR 重影）。
+            segs_in = [sg for k, sg in sorted(a_src.items())
+                       if t - 0.05 <= k < t1 - 0.005]
             ja_raw = "".join((sg.get("text") or "") for sg in segs_in).strip()
             seg = segs_in[0] if segs_in else None
             flags, ja_clean = [], ""
