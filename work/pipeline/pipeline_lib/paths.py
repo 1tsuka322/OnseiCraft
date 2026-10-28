@@ -55,6 +55,9 @@ QUEUE = os.path.join(TMP, "pipeline_queue")
 # 现在按「包目录」定位，并在文件缺失时告警。
 CONFIG = os.environ.get("KIKOERU_CONFIG") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pipeline.json")
+# 本机覆盖（不进库）：模型路径、llama.cpp 位置这些**因机器而异**的东西放这里，
+# 公共的 pipeline.json 里不写任何绝对路径。两份按「先公共、后本地」深合并。
+CONFIG_LOCAL = os.path.join(os.path.dirname(CONFIG), "pipeline.local.json")
 
 # 生产知识表：**唯一真相**在 data/style/，这里只登记「参与版本化的是哪些文件」。
 # role 用于「这条产物依赖哪类知识」的追溯与失效判断。
@@ -121,23 +124,28 @@ DEFAULTS = {
 }
 
 
+def _merge(cfg, user):
+    for k, v in (user or {}).items():
+        if k == "profiles":
+            for pk, pv in v.items():
+                cfg["profiles"].setdefault(pk, {}).update(pv)
+        elif k == "models" and isinstance(v, dict):
+            cfg.setdefault("models", {}).update(v)
+        else:
+            cfg[k] = v
+
+
 def load_config():
     cfg = json.loads(json.dumps(DEFAULTS))
-    if os.path.exists(CONFIG):
-        try:
-            user = json.load(open(CONFIG, encoding="utf-8"))
-            for k, v in user.items():
-                if k == "profiles":
-                    for pk, pv in v.items():
-                        cfg["profiles"].setdefault(pk, {}).update(pv)
-                else:
-                    cfg[k] = v
-        except Exception as e:
-            print("⚠️ 读 %s 失败，用默认配置：%s" % (CONFIG, e))
-    else:
-        # 不再静默：以前路径写错，配置文件存在但没被读，跑出来跟默认值一样，
-        # 谁都发现不了。缺文件必须说一声。
-        print("⚠️ 配置文件不存在：%s → 全部用 DEFAULTS" % CONFIG)
+    if not os.path.exists(CONFIG):
+        # 不再静默：路径写错时配置文件存在却没被读，跑出来跟默认值一样，谁都发现不了。
+        print("⚠️ 配置文件不存在：%s → 只用 DEFAULTS（+ 本地覆盖）" % CONFIG)
+    for path in (CONFIG, CONFIG_LOCAL):
+        if os.path.exists(path):
+            try:
+                _merge(cfg, json.load(open(path, encoding="utf-8")))
+            except Exception as e:
+                print("⚠️ 读 %s 失败，跳过：%s" % (path, e))
     return cfg
 
 

@@ -60,3 +60,6 @@ Thumbs.db
 
 # 日志
 *.log
+
+# 本机覆盖配置（模型路径等，不进库）
+work/pipeline/pipeline.local.json

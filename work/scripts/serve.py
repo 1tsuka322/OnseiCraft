@@ -19,19 +19,53 @@ import subprocess
 import urllib.request
 import urllib.error
 
-LLAMA_DIR = r"D:\llama.cpp"
-GGUF_DIR = r"D:\fasterwhisperGUI-0.8.5.sfx\models\qwen2.5-7b-instruct-gguf"
-QWEN3_DIR = r"D:\fasterwhisperGUI-0.8.5.sfx\models\qwen3-8b-gguf"
-Q5 = os.path.join(GGUF_DIR, "qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf")
-Q4 = os.path.join(GGUF_DIR, "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf")
-Q3_8B = os.path.join(QWEN3_DIR, "Qwen3-8B-Q5_K_M.gguf")
-SAKURA_DIR = r"D:\fasterwhisperGUI-0.8.5.sfx\models\sakura-7b"
-SAKURA = os.path.join(SAKURA_DIR, "sakura-7b-v1.0-iq4xs.gguf")
+# ---- 模型与运行时路径：**不再写死**（2026-10-28 R154）----
+# 以前这些是硬编码的本机路径，换机器 / 开源出去就完全不能用（协作者实测卡在这）。
+# 解析顺序：环境变量 `KIKOERU_<KEY>` → `pipeline.json` 的 `models` 段 → 默认值。
+# 换机器时**不用改代码**，三种办法任选：
+#   ① 环境变量：KIKOERU_LLAMA_DIR / KIKOERU_MODELS_DIR / KIKOERU_MODEL_Q5 / KIKOERU_MODEL_SAKURA ...
+#   ② 改 work/pipeline/pipeline.json 的 models 段
+#   ③ 把模型放到默认位置
+def _load_models_cfg():
+    """读 pipeline.json 的 models 段（读不到就空，不报错——serve.py 要能独立跑）。"""
+    p = os.environ.get("KIKOERU_CONFIG") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "pipeline", "pipeline.json")
+    out = {}
+    # 先公共、后本地（pipeline.local.json 不进库，放本机的模型路径）
+    for path in (p, os.path.join(os.path.dirname(p), "pipeline.local.json")):
+        try:
+            out.update((json.load(open(path, encoding="utf-8")) or {}).get("models") or {})
+        except Exception:
+            pass
+    return out
+
+
+_CFG_MODELS = _load_models_cfg()
+
+
+def _cfg(key, default=""):
+    """env → pipeline.json.models → default。"""
+    v = os.environ.get("KIKOERU_" + key.upper())
+    if v:
+        return v
+    return _CFG_MODELS.get(key) or default
+
+
+LLAMA_DIR = _cfg("llama_dir", "D:/llama.cpp")
+_MODELS = _cfg("models_dir", "D:/models")
+GGUF_DIR = _cfg("gguf_dir", os.path.join(_MODELS, "qwen2.5-7b-instruct-gguf"))
+QWEN3_DIR = _cfg("qwen3_dir", os.path.join(_MODELS, "qwen3-8b-gguf"))
+Q5 = _cfg("model_q5", os.path.join(GGUF_DIR, "qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf"))
+Q4 = _cfg("model_q4", os.path.join(GGUF_DIR, "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"))
+Q3_8B = _cfg("model_qwen3", os.path.join(QWEN3_DIR, "Qwen3-8B-Q5_K_M.gguf"))
+SAKURA_DIR = _cfg("sakura_dir", os.path.join(_MODELS, "sakura-7b"))
+SAKURA = _cfg("model_sakura", os.path.join(SAKURA_DIR, "sakura-7b-v1.0-iq4xs.gguf"))
 # HY-MT 1.5（腾讯混元，WMT25 冠军升级版）——**翻译专用**模型，用于「初译」通道
 # （KIKOERU_ENGINE=hymt）。官方 GGUF，Q4_K_M 约 4.3GB。它不是聊天模型，
 # prompt 必须明确「把下面的文本翻译成中文」，见 translate.py 的 hymt 分支。
-HYMT_DIR = r"D:\fasterwhisperGUI-0.8.5.sfx\models\hy-mt1.5-7b"
-HYMT = os.path.join(HYMT_DIR, "HY-MT1.5-7B-Q4_K_M.gguf")
+HYMT_DIR = _cfg("hymt_dir", os.path.join(_MODELS, "hy-mt1.5-7b"))
+HYMT = _cfg("model_hymt", os.path.join(HYMT_DIR, "HY-MT1.5-7B-Q4_K_M.gguf"))
 
 # 每个候选模型： (路径, 权重显存MB, 每槽上下文, 并行槽数, 是否 KV 量化, 是否加 --jinja)
 # KV cache 的每 token 开销 = 2 * 层数 * KV头数 * head_dim * 2B：
@@ -58,8 +92,9 @@ MODELS = {
     # HY-MT 1.5 翻译专用：只做初译，风格交给 polish。Q4_K_M ~4.3GB。
     "hymt":   (HYMT,   4400, 24576, 3, False, False),
 }
-PORT = 8080
-API = "http://127.0.0.1:%d" % PORT
+HOST = _cfg("host", "127.0.0.1")
+PORT = int(_cfg("port", "8080"))
+API = "http://%s:%d" % (HOST, PORT)
 
 
 def gpu_free_mb():
@@ -111,7 +146,7 @@ def start(force=None):
     # 「exceeds the available context size」。所以按「每槽 ≥ 8192」反推总 -c。
     cmd = [os.path.join(LLAMA_DIR, "llama-server.exe"), "-m", gguf, "-c", str(ctx),
            "-np", str(slots), "-ngl", "99", "-fa", "on", "-t", "8",
-           "--host", "127.0.0.1", "--port", str(PORT)]
+           "--host", HOST, "--port", str(PORT)]
     if kv_q8:
         cmd += ["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
     if jinja:

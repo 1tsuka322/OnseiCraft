@@ -322,7 +322,14 @@ def stage_translate(ctx):
 def stage_polish(ctx):
     # 润色必须用**能听指令的聊天模型**（Qwen），不能用初译的 HY-MT：
     # polish 的输入是「20 条规则 + 术语表 + 编号协议」，纯翻译模型会把它当待译文本。
-    _ensure_server(ctx, ctx.cfg.get("polish_engine") or "q5", stage="04_polish")
+    # 04 润色必须用**能听指令的聊天模型**（Qwen），不能用初译的 HY-MT：
+    # polish 的输入是「20 条规则 + 术语表 + 编号协议」，纯翻译模型会把它当待译文本。
+    # ⚠️ 但 cleanup-only 下**根本不过 LLM**，起服务纯属浪费 10 秒 + 5.6GB 显存，
+    # 还会让 manifest 里记一个「用了 Qwen」的假象（R154 验收时实测到）。
+    if ctx.cfg.get("polish_cleanup_only"):
+        print("[04_polish] cleanup-only：不过 LLM，跳过推理服务")
+    else:
+        _ensure_server(ctx, ctx.cfg.get("polish_engine") or "q5", stage="04_polish")
     asr = effective_asr(ctx)
     draft = ctx.draft_dir()
     out = ctx.out_dir()

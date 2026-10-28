@@ -66,6 +66,10 @@ kikoeru/
 
 ## 快速开始
 
+> **本仓库不含模型权重。** 跑之前先按 [`work/docs/MODELS.md`](work/docs/MODELS.md)
+> 把 whisper / Sakura / llama.cpp 下好，并在 `work/pipeline/pipeline.local.json` 里指过去
+> （该文件已在 .gitignore，不会上传）。不配也能跑完三个不调模型的阶段和全部门禁。
+
 ```bash
 git clone <this-repo> && cd kikoeru
 python -m pip install -r work/requirements.txt
@@ -125,6 +129,7 @@ $P promote --run <run_id>                                     # 进生产（门�
 | 想了解 | 看 |
 | --- | --- |
 | **目录结构与每层职责** | [`work/README.md`](work/README.md) |
+| **模型下载 / 放哪 / 怎么配（本地跑必读）** | [`work/docs/MODELS.md`](work/docs/MODELS.md) |
 | 整体架构与设计取舍 | [`work/docs/ARCHITECTURE.md`](work/docs/ARCHITECTURE.md) |
 | 管线用法、指纹、断点续跑、GPU 串行 | [`work/docs/PIPELINE.md`](work/docs/PIPELINE.md) |
 | 知识表（错字/术语/允许集/覆盖表）格式与审批 | [`work/docs/KNOWLEDGE.md`](work/docs/KNOWLEDGE.md) |

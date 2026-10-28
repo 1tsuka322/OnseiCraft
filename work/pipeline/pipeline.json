@@ -3,7 +3,7 @@
  "device": "cuda",
  "compute": "float16",
  "ext": "auto",
- "engine": "hymt",
+ "engine": "sakura",
  "cue_pipeline": 1,
  "_cue_note": "0=显示行 / 1=语义 cue。交付的 16 部都是 1（成品有清屏 spacer，只有 cue 分支才产生）。",
  "spk_prefix": false,
@@ -16,6 +16,7 @@
  "polish_engine": "q5",
  "_polish_engine_note": "04 润色用的模型（q5=Qwen2.5-7B-Instruct）。不能跟 engine(hymt) 共用：纯翻译模型做不了「规则+术语+编号协议」的润色。",
  "_python_note": "不写死解释器路径：默认用运行 pipeline.py 的那个解释器。要指定就设 KIKOERU_PYTHON 或在本文件加 \"python\"。",
- "polish_cleanup_only": false,
- "_polish_cleanup_only_note": "04 是否只做确定性后处理（不过 Qwen）。true=走「Sakura 初译 + cleanup-only」新路线（R154 五轨实测：门禁全过、语义 loss 0、字数 -27%）；false=现网 HY-MT + Qwen 润色。换路线时通常要和 engine=sakura 一起改。"
+ "polish_cleanup_only": true,
+ "_polish_cleanup_only_note": "04 是否只做确定性后处理（不过 Qwen）。true=走「Sakura 初译 + cleanup-only」新路线（R154 五轨实测：门禁全过、语义 loss 0、字数 -27%）；false=现网 HY-MT + Qwen 润色。换路线时通常要和 engine=sakura 一起改。",
+ "_route_note": "2026-10-28 R154 起默认走新路线：engine=sakura（Sakura-7B 初译，懂 ACGN 词汇） + polish_cleanup_only=true（04 只做确定性后处理，不过 Qwen）。五轨对照见 internal/docs/rounds/R154_20261028.md；回退旧路线把这两项改回 hymt/false。"
 }

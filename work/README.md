@@ -63,6 +63,7 @@ work/
 │   └── README.md
 │
 ├── docs/                    公开文档
+│   ├── MODELS.md            ★ 模型准备（下载地址 / 放哪 / 怎么配 / 显存怎么排）
 │   ├── ARCHITECTURE.md      设计取舍
 │   ├── PIPELINE.md          用法/指纹/断点续跑/GPU 串行
 │   ├── KNOWLEDGE.md         知识表格式与审批流程
