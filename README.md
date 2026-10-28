@@ -10,11 +10,12 @@
 
 ---
 
-## 目录（只有三个文件夹）
+## 目录（三个文件夹 + 两个文件）
 
 ```
 kikoeru/
 ├── README.md             ← 本文件：仓库说明
+├── LICENSE               ← MIT（留在根目录，GitHub 只从这里识别许可证）
 ├── ASMRmusic/            原始音频（不进库）
 │   └── RJxxxxxxx/…
 ├── kikoerusubtitle/      交付成品 LRC（不进库）
@@ -35,7 +36,7 @@ kikoeru/
 ```
 
 **接手先看 [`work/README.md`](work/README.md)**，那里有完整结构树和每层的职责。
-许可见 [`work/LICENSE`](work/LICENSE)（MIT），参与方式见 [`work/CONTRIBUTING.md`](work/CONTRIBUTING.md)。
+许可见 [`LICENSE`](LICENSE)（MIT），参与方式见 [`work/CONTRIBUTING.md`](work/CONTRIBUTING.md)。
 
 ## 它解决什么问题
 
@@ -132,4 +133,4 @@ $P promote --run <run_id>                                     # 进生产（门�
 
 ## 许可
 
-[MIT](work/LICENSE)
+[MIT](LICENSE)

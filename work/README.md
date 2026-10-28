@@ -2,6 +2,7 @@
 
 > 仓库根只有三样东西：`ASMRmusic/`（音频）、`kikoerusubtitle/`（成品）、`work/`（本目录）。
 > **所有代码、文档、数据、运行产物、临时文件都在这里。**
+> 许可文件 `LICENSE` 留在**仓库根**（GitHub 只从根目录识别许可证），不在本目录。
 > 换机器接手：先读本页 → `internal/TODO_*.md`（最新那份的 §1）→ `internal/docs/WORKBENCH.md`。
 
 ---
@@ -12,7 +13,6 @@
 work/
 ├── README.md                ← 本文件（结构树 + 每层职责 + 常用命令）
 ├── requirements.txt         依赖（pip install -r）
-├── LICENSE                  MIT（根目录只放 README，所以许可放这里）
 ├── CONTRIBUTING.md          参与方式
 │
 ├── pipeline/                ★ 管线软件（唯一执行入口）
