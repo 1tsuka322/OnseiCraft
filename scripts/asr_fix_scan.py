@@ -37,6 +37,15 @@ import re
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DRAFT = os.path.join(ROOT, "data", "draft")
+
+# styleloc 解析知识表位置（KIKOERU_STYLE → data/style → presets）。
+# 2026-10-28（R151）：原来只有 load_errata() 在函数内 import，另两处
+# （load_do_not_change / load_all_ja）引用的是模块级全局 → NameError，
+# 于是 **02_asr_fix 一碰到 errata 命中就整段崩**，errata 表在管线里等于没生效。
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import styleloc  # noqa: E402
+
 KANJI = lambda c: "\u4e00" <= c <= "\u9fff"
 
 
