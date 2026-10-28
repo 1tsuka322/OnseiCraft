@@ -242,6 +242,21 @@ def stage_asr(ctx):
         _tee([ctx.py, dia, asr, ctx.source, "--device", "cpu",
               "--thr", str(ctx.cfg.get("diarize_thr", 0.30))],
              ctx.log("01_asr", "diarize.log"), env=ctx.env)
+    # 拉丁幻觉清理（2026-10-28 R154）：Whisper 在非语音段会吐英文
+    # （`はぁ… Huh, Ah, no, sorry!`、`Okay, now I'm going to over…`）。
+    # 必须在这里做，不能靠人记得手动跑——否则每次重跑 ASR 都把垃圾带回来。
+    # 纯确定性、不需要模型；结果算进 01 的输出哈希。
+    # 开关是 `asr_latin_cleanup`（pipeline.json，默认 true），做 A/B 时置 false。
+    if ctx.cfg.get("asr_latin_cleanup", True):
+        code3, tail3, _ = _tee([ctx.py, _script("asr_latin_halluc.py"),
+                                "--asr", os.path.dirname(os.path.dirname(asr)), "--apply"],
+                               ctx.log("01_asr", "latin_halluc.log"), env=ctx.env)
+        m = re.search(r"已清：整段丢弃 (\d+) / 只摘拉丁词 (\d+)", tail3 or "")
+        if m:
+            print("[01_asr] 拉丁幻觉清理：整段丢弃 %s / 只摘词 %s"
+                  % (m.group(1), m.group(2)), flush=True)
+        if code3 != 0:
+            print("⚠️ asr_latin_halluc 退出码 %d（不影响主流程）" % code3, flush=True)
     n = len(glob.glob(os.path.join(asr, "*.json")))
     return {"outputs": [manifest.dir_rec(asr, "*.json")],
             "gate": {"ok": n > 0, "tracks": n},

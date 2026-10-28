@@ -92,6 +92,9 @@ DEFAULTS = {
     # 04 只做确定性后处理、不过 LLM（Sakura 路线的配套开关，2026-10-28 R154）。
     # 开它 = 走「Sakura 初译 → cleanup-only」新路线；关它 = 现网「HY-MT → Qwen 润色」。
     "polish_cleanup_only": False,
+    # 01 阶段末尾清 Whisper 的拉丁幻觉（`はぁ… Huh, Ah, no, sorry!`）。
+    # 纯确定性、不需要模型；做 A/B 时置 false。
+    "asr_latin_cleanup": True,
     # 交付的 16 部是 cue 模式做的（spacer 只在 is_cue 分支产生，成品有 304 个 spacer）。
     # 0=显示行 / 1=语义 cue —— 默认必须与交付口径一致，否则行数/清屏行全对不上。
     "cue_pipeline": 1,

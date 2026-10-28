@@ -18,5 +18,7 @@
  "_python_note": "不写死解释器路径：默认用运行 pipeline.py 的那个解释器。要指定就设 KIKOERU_PYTHON 或在本文件加 \"python\"。",
  "polish_cleanup_only": true,
  "_polish_cleanup_only_note": "04 是否只做确定性后处理（不过 Qwen）。true=走「Sakura 初译 + cleanup-only」新路线（R154 五轨实测：门禁全过、语义 loss 0、字数 -27%）；false=现网 HY-MT + Qwen 润色。换路线时通常要和 engine=sakura 一起改。",
- "_route_note": "2026-10-28 R154 起默认走新路线：engine=sakura（Sakura-7B 初译，懂 ACGN 词汇） + polish_cleanup_only=true（04 只做确定性后处理，不过 Qwen）。五轨对照见 internal/docs/rounds/R154_20261028.md；回退旧路线把这两项改回 hymt/false。"
+ "_route_note": "2026-10-28 R154 起默认走新路线：engine=sakura（Sakura-7B 初译，懂 ACGN 词汇） + polish_cleanup_only=true（04 只做确定性后处理，不过 Qwen）。五轨对照见 internal/docs/rounds/R154_20261028.md；回退旧路线把这两项改回 hymt/false。",
+ "asr_latin_cleanup": true,
+ "_asr_latin_cleanup_note": "01 阶段末尾清 Whisper 在非语音段吐的英文（全库实测 58 段/7 部）。确定性，不需要模型。"
 }
