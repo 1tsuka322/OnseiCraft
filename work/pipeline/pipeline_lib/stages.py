@@ -495,7 +495,11 @@ def _summarize(gate, tail, code, d=""):
         return "全过" if not bad else "%d 段未过" % len(bad)
     if gate == "overlay":
         m = re.search(r"时间轴校验：([^\n（]+)", tail)
-        return m.group(1).strip() if m else "?"
+        if m:
+            return m.group(1).strip()
+        # 没有覆盖层文件时 repair_overlay --check 什么都不打印 —— 那是「无覆盖层」，
+        # 不是「未知」。返回 "?" 会让看板上出现一个莫名其妙的问号。
+        return "无覆盖层（跳过）" if code == 0 else "失败"
     if gate in ("trunc", "slot_guard"):
         # 这两个门禁把结果写成 json，直接数条数比抓 stdout 稳
         fn = os.path.join(d, "trunc_audit.json" if gate == "trunc" else "slot_guard.json")
