@@ -430,6 +430,34 @@ NONLEX_CHARS = set(
 )
 
 
+def _src_latin(ja):
+    """源语里有没有**非白名单**的拉丁串（Whisper 幻觉）。
+
+    ⚠️ 必须排除白名单：`ここがVIPルーム` 里的 VIP 是正常借词，
+    第一版直接查 `[A-Za-z]{3,}` 把它当成了源语污染，整句被兜底成「…」。
+    """
+    for w in _SRC_LATIN.findall(ja or ""):
+        if w.upper() not in LATIN_OK:
+            return True
+    return False
+
+
+def _ja_dup(ja):
+    """源语自己就在重复（`もう一回もう一回`、`待って待って`）。
+
+    这种句子的译文重复是**对的**，不能判复读退化——实测「等等等等」被判成退化、
+    兜底成「…」，把整句台词丢了。
+    """
+    s = _STRIP_JA.sub("", ja or "")
+    if len(s) < 4:
+        return False
+    for L in (2, 3, 4):
+        for i in range(len(s) - L):
+            if s.count(s[i:i + L]) >= 2 and L >= 2:
+                return True
+    return False
+
+
 def _nonlexical(ja):
     """日文侧是不是「非词汇音」：三层漏斗，任何一层判实词就返回 False。
 
@@ -491,7 +519,8 @@ def _sakura_bad(zh, ja):
     zn = len(_STRIP.sub("", zh or ""))
     if jn >= 5 and zn > SAKURA_MAX_RATIO * jn:
         return "ratio:%d/%d" % (zn, jn), _nonlexical(ja)
-    if _loop4(zh):
+    # 源语自己就在重复（`もう一回もう一回`）→ 译文重复是对的，不判
+    if _loop4(zh) and not _ja_dup(ja):
         return "loop", _nonlexical(ja)
     return "", False
 
@@ -568,7 +597,7 @@ def translate_block(block, prev_ctx):
                     # `はぁ…ヒリヒリはぁ… Huh, Ah, no, sorry!`）——这时候**重问没用**，
                     # 因为模型翻译得没错，是输入错了。直接给拟声兜底。
                     # 实测轨 04：7 处含拉丁的 ASR 行里 5 处是这种。
-                    if _SRC_LATIN.search(ja or ""):
+                    if _src_latin(ja):
                         HALLU["src"] = HALLU.get("src", 0) + 1
                         HALLU["masked"] += 1
                         out.append(SAKURA_FALLBACK)
