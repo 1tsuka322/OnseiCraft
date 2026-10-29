@@ -188,7 +188,10 @@ def build(run_dir, track_filter=None):
                 j += 1
             jn = len(STRIP.sub("", r["ja"]))
             zn = len(STRIP.sub("", zh))
-            if jn >= 8 and zh:
+            # 阈值从 8 提到 10：短句的字符比天然偏低（`だってそうでしょ` 7 假名
+            # → 「不是吗？」4 字 = 0.57 就报警），而拟声词意译更是必然偏低
+            # （`ぎゅぎゅもにもに` → 「捏捏。」）。这类假阳性会淹没真问题。
+            if jn >= 10 and zh:
                 ratio = zn / jn
                 if ratio < 0.4:
                     r["flags"].append("short")
