@@ -39,6 +39,11 @@ work/
 │   ├── term_lock.py         05 术语锁（允许集校验 + 确定性覆写）
 │   ├── check.py / empty_check.py / scan_violations.py / semantic_coverage.py
 │   │                        06 门禁
+│   ├── asr_latin_halluc.py  01 层末尾：清 Whisper 在非语音段吐的拉丁幻觉
+│   ├── asr_words.py         ★ text 改了必须同步 words（cue 管线读 words 不读 text）
+│   ├── export_review.py     逐行审校表（给外部模型判；用 --format txt）
+│   ├── fill_timeline.py     补「整行消失」的时间轴占位（cue 内漏译的兜底）
+│   ├── dedup_lines.py       删「和上一行一字不差」的重复行（跨 cue 那 193 处）
 │   ├── errata_audit.py      errata 自检（44 条断言）
 │   ├── test_regressions.py  回归门禁
 │   ├── repair_overlay.py    修复覆盖层（时间轴不变的人工听辨记录）
@@ -114,6 +119,27 @@ work/
 
 ---
 
+## 2.5 默认路线（2026-10-28 R154 起）
+
+`work/pipeline/pipeline.json` 里这两项决定整条路线：
+
+```json
+"engine": "sakura",              // 初译用 Sakura-7B（懂 ACGN 词汇，不会把 赤点 译成「红点」）
+"polish_cleanup_only": true      // 04 只做确定性后处理，**不过 Qwen**
+```
+
+为什么 04 不能再用 Qwen：Sakura 的输出已经是口语/ACGN 风格，
+Qwen 拿那 20 条「为 HY-MT 写的规则」去改，只会改坏（实测把
+`君のザコザコガキチンポ` 改成「让你那结实有力的成年男性生殖器…」）。
+
+**回退旧路线**（HY-MT + Qwen）：把这两项改成 `"hymt"` / `false`。
+
+⚠️ 换路线时 **01/02 不用重跑**（它们不调模型），从 03 起跑就行：
+
+```bash
+python work/pipeline/pipeline.py run --run <run_id> --from 03_translate
+```
+
 ## 3. 常用命令
 
 ```bash
@@ -122,6 +148,11 @@ python work/pipeline/pipeline.py selftest                 # 13 项
 python work/scripts/empty_check.py --selftest             # 4 项
 python work/scripts/semantic_coverage.py --selftest       # 9 项
 python work/scripts/errata_audit.py --test                # 44 项（无语料时自动 SKIP 数值断言）
+
+# 修正轮（改完知识表 / 补行 / 去重之后）
+python work/scripts/fill_timeline.py --run <run_id>        # 只报告，--apply 才写
+python work/scripts/dedup_lines.py  --run <run_id>         # 同上
+python work/scripts/export_review.py --run <run_id> --format txt --only-flagged --split
 
 # 跑一部作品
 P="python work/pipeline/pipeline.py"

@@ -385,6 +385,76 @@ python mask_nonlexical.py            # 自检（29 用例 + 6 restore_zh 校验�
      → `bad_cell()` 加占位符守卫（残留 `<M数字>` 判坏格 → 退回该行初译），门禁 `=== 3d2.`。
 
 
+### asr_latin_halluc.py —— ASR 拉丁幻觉清理（2026-10-28 R154，01 层末尾自动跑）
+
+Whisper 在非语音段（喘息/摩擦声）很自信地认为「有人在说话」，解码器找不到日语 Token
+就吐拉丁水印：`う・・・ Holmes Meanwhile in came off`、`はぁ… Huh, Ah, no, sorry!`。
+
+两条确定性判据：
+- **A** 非白名单拉丁字符占比 > 0.4 → 整段丢弃
+- **B** 有 ≥4 连续非白名单拉丁，且 `avg_logprob < -0.8` 或 `nsp > 0.4` → **只摘拉丁词**保留日文
+  （整行丢会把真台词一起杀了：`あ、白い方?…Viveだからね`）
+
+全库 148 文件实测命中 58 段 / 7 部。**默认只出报告，`--apply` 才动数据。**
+⚠️ 改 `text` 时必须同步 `words`（见 `asr_words.py`），否则 cue 管线读不到。
+
+### asr_words.py —— `text` 与词级时间戳同步（2026-10-28 R154，**头号 bug 的修复**）
+
+`cues.flatten_for_cues()` 优先用 `seg["words"]`，**根本不看 `seg["text"]`**。
+而 01 的拉丁清理、02 的 errata 历史上都只改 `text` → **默认路线下整张错字表等于没生效**
+（`性液→精液` 改对了，成品仍是「性液」；`直近でショット` 判了幻觉，译文照旧）。
+
+- `patch_words(seg, ja, fix)`：在词级时间戳上做与 `text.replace` 等价的替换（支持跨词、多处，保住 s/e）
+- `clear_words(seg)`：对不齐的直接丢掉，让下游用 text 合成伪词
+- `consistent(seg)`：判 text 与 words 是否一致（`flatten_for_cues` 拿它当安全网）
+
+### export_review.py —— 逐行审校表（2026-10-28 R154，给外部模型判）
+
+```bash
+python export_review.py --run <run_id> [--only-flagged] [--format txt|md|tsv] [--split]
+```
+
+输出六列：`行号 | 时间 | ASR 原文 | 02修正后 | 最终中文 | 标记`。
+标记全部可追溯：01 的 `halluc_latin`、02 的 `fix_log`、03/04 的判据现算。
+
+| 标记 | 含义 |
+|---|---|
+| `latin:drop` / `latin:strip` | 01 层拉丁幻觉：整段丢弃 / 只摘拉丁词 |
+| `errata` | 命中错字表 |
+| `masked` | 中文是「…」但日文有实字 → 可能误兜底 |
+| `short` / `long` | 译文 < 日文 40% / > 200%（日文 ≥10 字才判，短句豁免） |
+| `cont` | 承接上一行（一句 ASR 被拆成多行字幕） |
+| `dup_cont` | 承接行中文与上一行完全相同 → 显示层没切开 |
+
+⚠️ **格式必须用 `--format txt`**：tsv 的制表符贴进外部模型会被吞掉/当缩进，整表错列。
+`--split` 按轨拆文件（每轨一两百行，一次能读完）。
+
+### fill_timeline.py —— 补「整行消失」的时间轴占位（2026-10-29 R155）
+
+一个 cue 里塞两句时，Sakura 只翻前半句、后半句直接丢
+（`なんでこんな感じなの` + `フフフフ ママゴジがガギャギャ…` → 只有「为什么会变成这样啊？」）。
+写盘 `if not zh: continue` 又不写空行 → **那一秒完全空白**，`empty_check` 直接挂。
+
+```bash
+python fill_timeline.py --run <run_id> [--apply]
+```
+
+⚠️ 判据必须用**重建 cue 的起点**（`cues.build_semantic_cues(flatten_for_cues(...))`），
+不能用 ASR 段起点——05 的行是「显示行」，起点是 cue 起点/中文切点，用段起点会报 96~466 行假缺失。
+且必须 `KIKOERU_CUE_PIPELINE=1` 在 import cues **之前**设（`cues.ENABLED` 只读一次）。
+
+### dedup_lines.py —— 删掉「和上一行一字不差」的重复行（2026-10-29 R155）
+
+`render_display_lines` 偶尔把同一句中文贴到两个**不同 cue** 上（全库 193 处，RJ377265 一部 99 处）。
+跨 cue 在 `polish.py` 里删不了：那个 cue 会一行不剩，触发 `keep < len(lines)` 硬门禁。
+
+```bash
+python dedup_lines.py --run <run_id> [--apply]
+```
+
+删行是安全的：LRC 的显示时长 = 到下一行时间戳为止，删掉第二行，第一行自动延长。
+⚠️ **纯「…」不能删**——那是「有声音但没译出」的占位，删了 `empty_check` 立刻报「空字幕」。
+
 ### check.py —— 成品校验（2026-10-23 R23 起区分「清屏 spacer」与「真空行」）
 ```bash
 python check.py <字幕目录> [--style DIR]
@@ -802,3 +872,13 @@ python dedup_corpus.py --write --term 我慢汁
 ```
 
 **任何占比/频次类结论都不能拿 88077 当分母**（去重后 26885）。
+## 其他工具（未单列）
+
+| 脚本 | 作用 |
+|---|---|
+| `semantic_coverage.py` | **语义覆盖门禁**：检查日文里的具体物（名词/数量）在译文里是否被泛化掉（`coverage.json` 14 条规则）。`--selftest` 9/9。 |
+| `asr_halluc.py` | 早期幻觉清洗（套话/重复循环），已被 `asr_latin_halluc.py` + `collapse_rep.py` 取代，保留做对照。 |
+| `fragment_join.py` | 碎片行合并的独立工具（管线内已由 cue 层处理）。 |
+| `lock_match.py` / `lock_migrate.py` | E1 锁的匹配与迁移（时间戳漂移时按日文认回）。`test_lock_apply.py` 是它们的边界测试。 |
+| `rootloc.py` / `styleloc.py` | **路径解析**：`rootloc` 找仓库根（work 的上一级），`styleloc` 找知识表目录（`KIKOERU_STYLE` → `data/style` → `presets`）。⚠️ 独立脚本**必须**用它们，别自己拼路径（`os.path.join(ROOT, "kikoerusubtitle")` 是 work 里的空目录）。 |
+| `test_punct_norm.py` | 标点归一的边界测试。 |
