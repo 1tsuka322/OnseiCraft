@@ -2632,10 +2632,19 @@ def main():
                         _out = cues.spacer_rows(_dls, _next)
                     else:
                         _out = [(d["start"], d["text"]) for d in _dls]
+                    # 同一 cue 内的显示行去重（R155）：`render_display_lines`
+                    # 偶尔把同一句中文贴到连续两个时间戳上（实测全库 193 处，
+                    # RJ377265 一部 99 处）。观众看到的是同一句话连着闪两遍。
+                    # 只去 **cue 内** 的重复：跨 cue 去掉会让那个 cue 一行都不剩，
+                    # 触发下面 `keep < len(lines)` 的硬门禁。
+                    _prev_tx = None
                     for _t, _tx in _out:
                         if _tx:
                             # E1：句级锁定（人工修正逐字保留，不因重跑丢失）
                             _tx = apply_lock(src, fmt_lrc(_t), _tx, ln.get("text", ""))
+                        if _tx and _tx == _prev_tx:
+                            continue
+                        _prev_tx = _tx
                         f.write("%s%s\n" % (fmt_lrc(_t), _tx))
                         if _tx:
                             keep += 1
