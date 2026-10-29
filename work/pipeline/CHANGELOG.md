@@ -8,6 +8,21 @@
 
 ## v0.1.0-beta.10 — 2026-10-28（复核看后文 + 语义覆盖门禁）
 
+### 2026-10-29 · 修：阶段描述写死模型名（03 一律显示「HY-MT」、04 一律显示「Qwen」）
+
+R154 把默认路线换成 `engine=sakura` + `polish_cleanup_only=true` 之后，
+`STAGES[...]["desc"]` 还是字符串常量，于是每次运行都打印
+`[03_translate] ▶ 初译（HY-MT）`、`[04_polish] ▶ 风格润色（Qwen2.5-7B + E1 锁 + A8）`——
+**而 03 实际跑的是 Sakura、04 根本没调模型**。这正是 R155 在修的「声明 ≠ 实际」，
+只是这次错在日志上（会误导排障：R153 的事故就是靠日志判断引擎的）。
+
+- `desc` 允许写成 `callable(ctx)`；`run_stages` 在打印前解析（缓存命中与开始执行两处）。
+- 新增 `ENGINE_LABELS` + `_engine_label()`：`sakura→Sakura`、`hymt→HY-MT`、`q5/q4→Qwen2.5-7B`。
+- 03 → `初译（Sakura）` / `初译（HY-MT）`；04 → `确定性后处理（cleanup-only，不过 LLM）`
+  / `风格润色（Qwen2.5-7B + E1 锁 + A8）`，按 `polish_cleanup_only` 切换。
+- **只影响显示**：`desc` 不进指纹，改动不会造成 cache miss。
+
+
 ### 2026-10-28 · 修：`04_polish` 不记录「实际加载的模型」（R153 的断言缺口）
 
 R153 把 `serve.py ensure` 接上了，但**只有 03 把校验结果写进 manifest**，04 没有。

@@ -545,6 +545,15 @@ def _summarize(gate, tail, code, d=""):
 
 
 # ---------------------------------------------------------------- 注册表
+# 引擎代号 → 给人看的名字（只用于日志/看板显示，不参与指纹）
+ENGINE_LABELS = {"sakura": "Sakura", "hymt": "HY-MT", "q5": "Qwen2.5-7B", "q4": "Qwen2.5-7B"}
+
+
+def _engine_label(name):
+    key = str(name).lower()
+    return ENGINE_LABELS.get(key, str(name))
+
+
 STAGES = {
     "01_asr": {
         "desc": "ASR（+台本打轴/声纹）", "gpu": True,
@@ -568,7 +577,7 @@ STAGES = {
         "inputs": lambda ctx: [manifest.dir_rec(ctx.asr_dir(), "*.json")],
     },
     "03_translate": {
-        "desc": "初译（HY-MT）", "gpu": True,
+        "desc": lambda ctx: "初译（%s）" % _engine_label(ctx.cfg.get("engine", "hymt")), "gpu": True,
         "knowledge": ["glossary.json", "pin_sets.json", "user_rules.txt", "terms_db.json"],
         "code": ["translate.py", "serve.py"],
         "run": stage_translate,
@@ -578,7 +587,11 @@ STAGES = {
         "inputs": lambda ctx: [manifest.dir_rec(effective_asr(ctx), "*.json")],
     },
     "04_polish": {
-        "desc": "风格润色（Qwen2.5-7B + E1 锁 + A8）", "gpu": True,
+        "desc": lambda ctx: ("确定性后处理（cleanup-only，不过 LLM）"
+                             if ctx.cfg.get("polish_cleanup_only")
+                             else "风格润色（%s + E1 锁 + A8）"
+                                  % _engine_label(ctx.cfg.get("polish_engine", "q5"))),
+        "gpu": True,
         "knowledge": ["glossary.json", "hard_rules.txt", "user_rules.txt",
                       "parallel.json", "pin_sets.json"],
         "code": ["polish.py", "serve.py", "cues.py", "mask_nonlexical.py",
@@ -658,15 +671,21 @@ def execute(run, name, cfg, force=False, dry=False):
     fp = FP.stage_fingerprint(name, params, inputs, know, code, ctx.cfg, models=models)
     prev = run.stage(name) or {}
 
+    # desc 允许写成 callable(ctx)：阶段描述必须跟着实际配置走，不能写死模型名
+    # （R155 主题：声明 ≠ 实际。03 曾一律显示「HY-MT」，04 一律显示「Qwen」，都已过期）
+    desc = spec["desc"]
+    if callable(desc):
+        desc = desc(ctx)
+
     if not force and not dry and prev.get("fingerprint") == fp \
             and prev.get("status") in ("ok", "imported"):
         print("[%s] ✅ 缓存命中，跳过（%s，%s）"
-              % (name, prev.get("ended_at", "?"), spec["desc"]))
+              % (name, prev.get("ended_at", "?"), desc))
         return True
 
     reason = "强制重跑" if force else _miss_reason(prev, fp, params, inputs, know, code,
                                                  models=models)
-    print("\n[%s] ▶ %s%s" % (name, spec["desc"], "" if dry else "（%s）" % reason))
+    print("\n[%s] ▶ %s%s" % (name, desc, "" if dry else "（%s）" % reason))
     run.begin_stage(name, params, inputs, know, code, cache_miss_reason=reason,
                     extra={"config_hash": FP.config_hash(ctx.cfg),
                            "env": FP.env_whitelist(ctx.cfg),
