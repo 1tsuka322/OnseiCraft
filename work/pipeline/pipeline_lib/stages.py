@@ -392,13 +392,21 @@ def stage_term_lock(ctx):
         print("[dry] 复制 %s → %s，再跑 term_lock" % (src, out))
         print("[dry] %s term_lock.py %s --apply --ja-dir %s" % (ctx.py, out, effective_asr(ctx)))
         return {"outputs": [], "gate": None, "extra": {"dry_run": True}}
-    # 每次从 04 重建 05（幂等）：不删旧文件会让上一轮的残留混进来
-    for f in glob.glob(os.path.join(out, "*.lrc")):
-        os.remove(f)
+    # 每次从 04 重建 05（幂等）。
+    # ⚠️ 2026-10-29 改：原来「先全删再复制」，每部要删 N 个文件（N=轨数）——
+    # RJ377265 25 轨就是 25 次删除，实测撞上 safe-delete hook 的「单轮 50 次」上限，
+    # 全库重跑跑到第 3 部就被拦死（`SAFE_DELETE_BULK_CONFIRM_REQUIRED`），
+    # 表现为「锁删不掉、阶段起不来」，和 R155 记的那个坑同源。
+    # 改成「先复制覆盖、再删这一轮没有的旧文件」：幂等性完全一致（最终状态相同），
+    # 删除数从 N 降到 0~2。
+    src_files = {os.path.basename(f) for f in glob.glob(os.path.join(src, "*.lrc"))}
     n_copy = 0
     for f in sorted(glob.glob(os.path.join(src, "*.lrc"))):
         shutil.copy2(f, os.path.join(out, os.path.basename(f)))
         n_copy += 1
+    for f in glob.glob(os.path.join(out, "*.lrc")):
+        if os.path.basename(f) not in src_files:
+            os.remove(f)
     if n_copy == 0:
         raise RuntimeError("04_polish 没有 LRC，无法做术语锁：%s" % src)
     asr = effective_asr(ctx)
