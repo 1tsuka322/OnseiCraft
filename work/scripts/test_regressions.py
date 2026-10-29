@@ -1186,6 +1186,60 @@ def check_repair_overlay(verbose):
     return bad
 
 
+# ---------------------------------------------------------------- Sakura 兜底判定护栏
+# 2026-10-29：拿 29 行「旧成品有译文、新 run 是『…』」给外部模型判，结论是
+# `_sakura_bad` 的复读判据把**忠实重复**也吞了（原文重复、译文等量重复 → 判「放大」）。
+# 这里把两类都冻住：下面 6 条**必须判干净**，下面 2 条**必须判脏**。
+SAKURA_CLEAN = [
+    ("有什么要来了 有什么要来了哦", "なんかなんか来ちゃう なんか来ちゃうよ"),
+    ("为什么、为什么、为什么、为什么。", "なんで、なんで、なんで、なんで。"),
+    ("我是M字小穴 我是M字小穴", "私はマゾマンコです 私はマゾマンコ"),
+    ("很好很好，很好很好，很好很好，听我说。", "よしよし、よしよし、よしよーし ね、"),
+    ("去了去了去了去了", "行く、行く、行く、行く"),
+    ("啊啊、啊啊、啊啊、不行——啊啊——", "あぁ、あぁ、あぁ、ダメー あぁ、"),
+    ("OK。", "オッケー。"),          # 片假名外来词译成拉丁，不能判 nolang
+    # 混译：内容译出来了、专有名词用了拉丁 → 不能整行兜底成「…」
+    # （实测 RJ1234441 Free Talk 6 句 20~40 字的闲聊就这么整句蒸发了）
+    ("我这期吃的是薄荷口味的pino。", "今期食べちゃってて チョコミント味のピノ"),
+    ("我们家啊，已经很Happy了！", "もううちはね、ハッピーです!"),
+    ("我也想创作甜蜜蜜的作品，今后也请各位多多支持天神糖HIYOK",
+     "ラブラブな作品もまた作りたいし 今後とも天神"),
+    # 长句（≥24 字且 ≥4 汉字）里的重复是原文带来的，不能判 loop
+    # （实测 RJ1228193 轨01 19:01.70 一句 80 字的射精描写被整句吞成「…」）
+    ("唔，小弟弟又变得更硬了，色色的液体也沾在姐姐的手上，发出下流的声音哦——"
+     "黏糊糊、撸撸、咕啾咕啾、撸撸，脑子里一片空白——",
+     "ぐぅ、おーちんぽんも、また一段と固くなって、エッチのおしるも、姉上の手に絡んで、"
+     "やらしい音してますよー、ぬちゃぬちゃ、しこしこ、ぐちゅぐちゅ、しこしこ、頭の中、真っ白ー。"),
+]
+SAKURA_DIRTY = [
+    ("啊—啊—啊—啊—啊—啊—啊—啊—啊—啊—啊—啊—", "ジャメそしてそしてそして", "loop"),
+    ("如果你赢了，我就会对你言听计从，如果你赢了，我就", "今日はいい天気ですね", "loop"),
+    ("啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊啊", "あ゛あ゛あ゛あ゛あ゛あ゛あ゛あ゛あ゛", "loop"),
+    # 整行英文（R153 那 115 行的形态）必须继续拦
+    ("Okay, now I am going to show you", "はい、じゃあ今から見せてあげるね", "latin"),
+]
+
+
+def check_sakura_guard(verbose):
+    """`translate._sakura_bad` 的判定护栏。"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import translate as T
+    bad = []
+    for zh, ja in SAKURA_CLEAN:
+        why, _ = T._sakura_bad(zh, ja)
+        if why:
+            bad.append((ja[:20], "应判干净，实际 %s" % why))
+        elif verbose:
+            print("   ✅ 干净 %s" % ja[:20])
+    for zh, ja, kind in SAKURA_DIRTY:
+        why, _ = T._sakura_bad(zh, ja)
+        if why.split(":")[0] != kind:
+            bad.append((ja[:20], "应判 %s，实际 %s" % (kind, why or "干净")))
+        elif verbose:
+            print("   ✅ 拦下 %s" % ja[:20])
+    return bad
+
+
 def main():
     verbose = "-v" in sys.argv or "--verbose" in sys.argv
     print("=== 0. cue 构建器验收（确定性/词数守恒/时间单调不重叠）===")
@@ -1421,6 +1475,12 @@ def main():
     print("   %d/%d 通过 %s" % (_n3o - len(bad3o), _n3o,
                               "✅" if not bad3o else "❌ " + str(bad3o)))
 
+    print("\n=== 3p. Sakura 兜底判定护栏（2026-10-29）===")
+    bad3p = check_sakura_guard(verbose)
+    _n3p = len(SAKURA_CLEAN) + len(SAKURA_DIRTY)
+    print("   %d/%d 通过 %s" % (_n3p - len(bad3p), _n3p,
+                              "✅" if not bad3p else "❌ " + str(bad3p)))
+
     print("\n=== 4. 全量泄漏告警（信息项）===")
     w = check_warnings(verbose)
     print("   告警 %d 处（含真重复/叠词，仅供参考）" % len(w))
@@ -1428,7 +1488,7 @@ def main():
     ok = (ok0 and not bad1 and not bad2 and not bad3 and not bad3b
           and not bad3c and not bad3d and not bad3d2 and not bad3e and not bad3e2
           and not bad3f and not bad3g and not bad3h and not bad3i and not bad3k and not bad3l
-          and not bad3m and not bad3n and not bad3o)
+          and not bad3m and not bad3n and not bad3o and not bad3p)
     if SKIPPED:
         print("\n跳过 %d 项（缺数据，公开仓库 clone 下来的正常状态）：" % len(SKIPPED))
         for s in SKIPPED[:5]:

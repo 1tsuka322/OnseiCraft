@@ -126,7 +126,15 @@ def _hymt_hint(text):
           or h.get("soft_listener_marker") or [h["act"]])
     return tpl % "／".join(ev)
 
-CHUNK = 10
+# 每块多少行一起翻。⚠️ `_parse_plain` **只校验行数**，模型把 N 行重排成另外 N 行
+# （对调 / 把两句并一句再拆开）时**静默通过**——2026-10-29 实测到三种：
+#   对调：`お塩が溜まって…`(15字)→「用沾满爱液的手掌使劲摩擦」(12字)，与下一行互换
+#   截断：`姉上をここまで翻弄できるのはあなただけです`(22字)→「姐姐，」(3字)
+#   回吐：下一句首词 `ダメ` 挂到上一句句尾（「晚安。不行」）
+# **A/B 实锤（RJ256650 05 轨 656.46/660.10）**：CHUNK=10 两行对调；
+# CHUNK=3 变成「我要用湿答答的手掌」/「摩擦到盐巴积到喷出来为止」，各归各位。
+# 所以默认改成 3。代价：调用次数变多（RJ256650 6 轨 2 分 25 秒，可接受）。
+CHUNK = int(os.environ.get("KIKOERU_CHUNK", "3"))
 WORKERS = 3
 CTX_KEEP = 3
 
@@ -509,6 +517,46 @@ def _nonlexical(ja):
     return hit / len(t) >= 0.8
 
 
+def _rep_level(s):
+    """「重复得多厉害」：最大重复次数（单字连排按长度、6 字片段按出现次数）。
+
+    ⚠️ 为什么不能用「译文长度 ≥10 字」判放大（2026-10-29）：
+    `なんで、なんで、なんで、なんで。` → 「为什么、为什么、为什么、为什么。」
+    是 **4:4 的忠实重复**，但剥完标点有 12 字，旧规则一律判「放大」→ 重问 → 还是重复
+    → 兜底成「…」，把整句台词丢了。实测 RJ1530549/1065777/1234441 共 40 条 loop，
+    绝大多数是这种「原文自己重复、译文等量重复」的忠实翻译。
+    改成**比较次数**：中文重复次数 > 日文 × 2 + 1 才算真的放大。
+    """
+    s = _STRIP.sub("", s or "")
+    best = 1
+    if len(s) < 4:
+        return best
+    for ch in set(s):
+        m = re.search(re.escape(ch) + r"{3,}", s)
+        if m:
+            best = max(best, len(m.group(0)))
+    # ⚠️ 必须也数 2/3 字的短单元：`あぁ×4`、`よし×4`、`んで×4` 都不是单字连排，
+    # 只数单字连排 + 6 字片段会漏（实测 `あぁ、あぁ、あぁ、ダメー` 就是这样漏的）。
+    for L in (2, 3, 4, 6):
+        for i in range(len(s) - L + 1):
+            c = s.count(s[i:i + L])
+            if c > best:
+                best = c
+    return best
+
+
+def _ja_is_sentence(ja):
+    """日文是不是「一句话」（而不是「一段声音」）：长度 ≥24 且汉字 ≥4。
+
+    呻吟/拟声不会又长又带这么多汉字。这种句子**就算译文重复也是忠实的**——
+    原文里本来就有一串拟声：`ぬちゃぬちゃ、しこしこ、ぐちゅぐちゅ、しこしこ`。
+    实测 RJ1228193 轨01 19:01.70 一句 80 字的射精描写，被 loop 判据整句吞成「…」。
+    ⚠️ 只用于 loop 判据，**不能**拿去放宽 nonlex（长呻吟照样要压「…」）。
+    """
+    s = _STRIP_JA.sub("", ja or "")
+    return len(s) >= 24 and len(re.findall(r"[\u4e00-\u9fff]", s)) >= 4
+
+
 def _loop4(zh):
     """复读退化：**语气/拟声字**连续 ≥5 次，或 6 字以上片段出现两遍。
 
@@ -548,9 +596,25 @@ def _sakura_bad(zh, ja):
         return "latin:letters", _nonlexical(ja)
     why = _residue(zh)
     if why:
+        # 混译不算残留：`我这期吃的是薄荷口味的pino。`——内容全译出来了，只是专有名词
+        # （ピノ / プレイ / ハッピー / 天神ドロップ）用了拉丁。整行兜底成「…」比留着
+        # "pino" 糟得多：实测 RJ1234441 的 Free Talk 有 6 句 20~40 字的生活闲聊
+        # 就这么整句蒸发了（`ラブラブな作品もまた作りたいし…` 那句连品牌名一起没了）。
+        # ⚠️ 不能因此放宽 R153 的英文残留保护：那种是**整行英文**，中文字数远不到 6，
+        # 下面的 nolang 分支照样抓得住。
+        if why.startswith("latin:") and \
+                len(re.findall(r"[\u4e00-\u9fff]", zh or "")) >= 6:
+            return "", False
         return why, _nonlexical(ja)
     # 整行没有一个中日文字（只剩标点/空格）→ 这是模型没产出内容，不是译文
     if zh and not re.search(r"[\u4e00-\u9fff\u3040-\u30ff]", zh):
+        # 例外：源语本身就是**片假名外来词**（`オッケー。`），Sakura 译成 `OK。` 是对的，
+        # 不能因为「译文里没有中日文字」就判 nolang。实测 RJ1234441 轨02
+        # 把 `オッケー。` 兜底成「…」，虽然后面两句译出来了，但开头被吞。
+        if re.fullmatch(r"[A-Za-z]{1,6}",
+                        _STRIP.sub("", zh or "")) and \
+                re.fullmatch(r"[\u30a0-\u30ff]{1,12}", _STRIP_JA.sub("", ja or "")):
+            return "", False
         return "nolang", _nonlexical(ja)
     jn = len(_STRIP.sub("", ja or ""))
     zn = len(_STRIP.sub("", zh or ""))
@@ -560,12 +624,22 @@ def _sakura_bad(zh, ja):
         return "symloop", _nonlexical(ja)
     # 源语自己就在重复（`もう一回もう一回`）→ 译文重复是对的，不判
     if _loop4(zh):
+        # 拟声 → 拟声：源语本来就是纯气声（`あ゛あ゛あ゛…`），译文也是纯语气字
+        # （`啊啊啊啊…`）。这**不是**忠实翻译，字幕里应该压成「…」。
+        # ⚠️ 这条不能靠比重复次数：`あ゛×11` → 「啊×22」算「等量」（22 ≤ 11×2+1），
+        # 按次数比会放过它，结果满屏「啊啊啊啊」。
+        if _nonlexical(ja):
+            zs = _STRIP.sub("", zh or "")
+            if zs and all(ch in FILLER_CHARS for ch in zs):
+                return "loop", True
         # 原文自己重复时，译文重复是**对的**（`待って待って`→「等等等等」）。
         # 但**放大**就不对了：`ジャメそしてそしてそして`（3 次）被译成
-        # `啊—啊—啊—…`（14 次）。所以除了「原文不重复」，再加一条
-        # 「译文剥完标点后 ≥10 字」——短句重复多半合法，长串重复基本是退化。
-        _zs = _STRIP.sub("", zh or "")
-        if not _ja_dup(ja) or len(_zs) >= 10:
+        # `啊—啊—啊—…`（14 次）。
+        # 判「放大」必须比**次数**，不能比字数：`なんで×4`→「为什么×4」剥完标点 12 字，
+        # 按「≥10 字」判会把忠实重复全吞掉（2026-10-29 修）。
+        # 整句级保护：长句（≥24 字且 ≥4 汉字）永不判 loop——那种句子里的重复是原文带来的。
+        if not _ja_is_sentence(ja) and \
+                (not _ja_dup(ja) or _rep_level(zh) > _rep_level(ja) * 2 + 1):
             return "loop", _nonlexical(ja)
     return "", False
 
