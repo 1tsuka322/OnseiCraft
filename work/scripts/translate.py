@@ -531,6 +531,15 @@ def _loop4(zh):
     return False
 
 
+def _symloop(zh):
+    """单个符号/标点连续重复 ≥10 次（`～～ ～～ ～～ …` × 60）。
+
+    ⚠️ `_loop4` 抓不到这种：它的 `_STRIP` 会把 `～`/`—` 剥掉，剥完是空串
+    （`len(s) < 5` 直接返回 False）。实测 RJ1623028 Track05 有一行吐了 60 组波浪号。
+    """
+    return bool(re.search(r"([～~—–…・])\1{9,}", zh or ""))
+
+
 def _sakura_bad(zh, ja):
     """返回 (原因, 是否非词汇音)。原因空 = 干净。"""
     # 逐字母退化：`K，O，S，h，h，a，n，d…`（Sakura 遇到罗马音垃圾时会把字母一个个吐出来）。
@@ -547,6 +556,8 @@ def _sakura_bad(zh, ja):
     zn = len(_STRIP.sub("", zh or ""))
     if jn >= 5 and zn > SAKURA_MAX_RATIO * jn:
         return "ratio:%d/%d" % (zn, jn), _nonlexical(ja)
+    if _symloop(zh):
+        return "symloop", _nonlexical(ja)
     # 源语自己就在重复（`もう一回もう一回`）→ 译文重复是对的，不判
     if _loop4(zh):
         # 原文自己重复时，译文重复是**对的**（`待って待って`→「等等等等」）。

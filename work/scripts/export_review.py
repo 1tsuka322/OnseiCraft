@@ -191,7 +191,9 @@ def build(run_dir, track_filter=None):
             # 阈值从 8 提到 10：短句的字符比天然偏低（`だってそうでしょ` 7 假名
             # → 「不是吗？」4 字 = 0.57 就报警），而拟声词意译更是必然偏低
             # （`ぎゅぎゅもにもに` → 「捏捏。」）。这类假阳性会淹没真问题。
-            if jn >= 10 and zh:
+            # 纯拟声/气声行豁免：`ぎゅぎゅぎゅ むにむにむにむにむに`（18 假名）
+            # → 「揉揉揉 捏捏捏。」（7 字），比例必然低，但意译完全达意。
+            if jn >= 10 and zh and not TR._nonlexical(r["ja"]):
                 ratio = zn / jn
                 if ratio < 0.4:
                     r["flags"].append("short")
