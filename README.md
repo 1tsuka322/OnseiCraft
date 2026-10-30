@@ -85,6 +85,10 @@ python work/scripts/semantic_coverage.py --selftest
 
 # 错字表自检：有完整语料时 44/44；语料不全时自动降级为「结构断言」并 SKIP 数值断言
 python work/scripts/errata_audit.py --test
+
+# 一条命令验收全部「交付声明」（音频↔字幕 / 成品=run / 阶段指纹 / 门禁 / 语义覆盖 / 死路径）
+# 台账里的每个数字都应该能由它复现；任何一条不成立就退出码 1
+python work/scripts/acceptance.py
 ```
 
 跑一部作品（需要你自己准备音频，放进 `ASMRmusic/<RJ号>/`）：

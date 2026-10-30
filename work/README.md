@@ -46,6 +46,8 @@ work/
 │   ├── fill_timeline.py     补「整行消失」的时间轴占位（cue 内漏译的兜底）
 │   ├── dedup_lines.py       删「和上一行一字不差」的重复行（跨 cue 那 193 处）
 │   ├── errata_audit.py      errata 自检（44 条断言）
+│   ├── acceptance.py        ★ 一条命令验收全部交付声明（音频↔字幕 / 成品=run / 指纹 / 门禁 / 语义 / 路径）
+│   ├── path_audit.py        扫写死的项目内绝对路径（三层目录改造的残留）
 │   ├── test_regressions.py  回归门禁
 │   ├── repair_overlay.py    修复覆盖层（时间轴不变的人工听辨记录）
 │   ├── fixline.py           单行重译（--list → --zh → --apply）

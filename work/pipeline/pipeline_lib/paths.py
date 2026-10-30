@@ -84,14 +84,18 @@ DEFAULTS = {
     "python": os.environ.get("KIKOERU_PYTHON", ""),
     "device": "cuda",
     "compute": "float16",
-    "engine": "hymt",
-    # 04 润色用的模型。**必须与初译分开**：初译是纯翻译模型（HY-MT），
-    # 润色要「20 条规则 + 术语表 + 编号协议」，只有聊天模型（Qwen）做得来。
-    # 2026-10-28 之前两个阶段共用同一个服务，实际跑的一直是 Qwen（见 R153）。
+    # ⚠️ DEFAULTS 必须与**交付口径**一致（2026-10-30 修正）。
+    # 以前这里写 `hymt` / `cleanup_only=False`（旧路线），而 pipeline.json 是
+    # `sakura` / `True`——配置文件一旦缺失或被改名，`load_config()` 就静默退回旧路线，
+    # 跑出来的成品看着正常、其实换了引擎。这正是 R153「声明 ≠ 实际」的翻版。
+    "engine": "sakura",
+    # 04 用的模型：只在**回退旧路线**（cleanup_only=false）时才生效。
+    # 初译是纯翻译模型，润色要「20 条规则 + 术语表 + 编号协议」，只有聊天模型做得来；
+    # 2026-10-28 之前两阶段共用同一个服务，实际跑的一直是 Qwen（见 R153）。
     "polish_engine": "q5",
-    # 04 只做确定性后处理、不过 LLM（Sakura 路线的配套开关，2026-10-28 R154）。
-    # 开它 = 走「Sakura 初译 → cleanup-only」新路线；关它 = 现网「HY-MT → Qwen 润色」。
-    "polish_cleanup_only": False,
+    # 04 只做确定性后处理、不过 LLM（Sakura 路线的配套开关，R154 起为交付口径）。
+    # true = 「Sakura 初译 → cleanup-only」；false = 旧路线「HY-MT → Qwen 润色」。
+    "polish_cleanup_only": True,
     # 01 阶段末尾清 Whisper 的拉丁幻觉（`はぁ… Huh, Ah, no, sorry!`）。
     # 纯确定性、不需要模型；做 A/B 时置 false。
     "asr_latin_cleanup": True,
