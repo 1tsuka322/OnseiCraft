@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "pipeline"))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from pipeline_lib import fingerprint as FP          # noqa: E402
-from pipeline_lib import manifest, stages           # noqa: E402
+from pipeline_lib import manifest, paths, stages   # noqa: E402
 
 FAIL = []
 
@@ -85,7 +85,13 @@ def main():
     bad = []
     for rj, rid in sorted(runs.items()):
         run = manifest.Run.load(rid)
-        cfg = run.data.get("config") or {}
+        # ⚠️ 必须和运行时同口径：`pipeline.py run` 用的是 `paths.load_config()`
+        # （= DEFAULTS + pipeline.json），而 run 里的 `config` 是**建 run 那天的快照**，
+        # 后来新增的 DEFAULTS 键（seg_flush_chars / chunk，2026-10-30 beta.13）它没有。
+        # 直接用快照会算出一个 `seg_flush_chars=None` 的 config_hash，和运行时记录的
+        # `=10` 永远对不上 —— 17 部 × 6 阶段全部假报「不符」。
+        # 这里用「DEFAULTS + run 快照」，既补齐新增键，又保留该 run 当时的值。
+        cfg = dict(paths.DEFAULTS, **(run.data.get("config") or {}))
         for name, spec in stages.STAGES.items():
             ctx = stages.Ctx(run, cfg, dry=True)
             fp = FP.stage_fingerprint(

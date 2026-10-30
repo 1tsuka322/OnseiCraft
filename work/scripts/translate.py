@@ -777,16 +777,25 @@ def _last_ctx(prev_ctx):
     return ja, zh
 
 
-def translate_block(block, prev_ctx):
-    """prev_ctx: 前几句的「日：… 译：…」，用来保持人称/称呼/口吻连贯。"""
-    _pja, _pzh = _last_ctx(prev_ctx)      # 二级重试（L2）用的前文
+def translate_block(block, prev_ctx, prev_raw=None):
+    """prev_ctx: 前几句的「日：… 译：…」，用来保持人称/称呼/口吻连贯。
+
+    prev_raw: (日, 译) —— **只给重试阶梯（L2）兜底**，不进主 prompt。
+    为什么需要：波次并行时，本波首块的 `prev_ctx` 常常整段未译（`results[j]` 还是空），
+    `_last_ctx` 于是返回 ("","")，`_rescue_line` 见前文为空**直接跳过 L2**。
+    实测 RJ1058739 `くる、くーる、くーる。`：L1 返回 `Ku、Ku、Ku。`（判脏），
+    带前文能救回「来，来，来。」，但生产日志是「未救回」——就是前文为空导致的。
+    """
+    _pja, _pzh = _last_ctx(prev_ctx)
+    if not _pja and prev_raw:
+        _pja, _pzh = prev_raw
     # 短行隔离（见 _split_short）：只在混排时才拆，全短或全长都不动
     if len(block) > 1 and ENGINE == "sakura":
         parts = _split_short(block)
         if len(parts) > 1:
             merged, last = [], ""
             for part in parts:
-                r, rep = translate_block(part, prev_ctx)
+                r, rep = translate_block(part, prev_ctx, prev_raw)
                 if r is None:
                     return None, rep
                 merged.extend(r)
@@ -839,7 +848,11 @@ def translate_block(block, prev_ctx):
                     and not any(_has_kana(t) for t in res)):
                 # 方案 A：逐行兜底（见 _sakura_bad 的注释）
                 out = []
-                for (_i, ja), zh in zip(block, res):
+                for _k, ((_i, ja), zh) in enumerate(zip(block, res)):
+                    # 块内第 2 行起，L2 的前文就是本块上一行（比块首前文更近、更准）；
+                    # 块首仍用 prev_ctx / prev_raw。这条保证 L2 几乎永远有前文可给。
+                    _lja = _pja if _k == 0 else (block[_k - 1][1] or "")
+                    _lzh = _pzh if _k == 0 else (out[_k - 1] if _k - 1 < len(out) else "")
                     # 源语本身就是垃圾（Whisper 在非语音段幻觉出英文，如
                     # `はぁ…ヒリヒリはぁ… Huh, Ah, no, sorry!`）——这时候**重问没用**，
                     # 因为模型翻译得没错，是输入错了。直接给拟声兜底。
@@ -853,7 +866,7 @@ def translate_block(block, prev_ctx):
                             HALLU["masked"] += 1
                             out.append(SAKURA_FALLBACK)
                             continue
-                        cand, ok, _lvl = _rescue_line(cja, _pja, _pzh)
+                        cand, ok, _lvl = _rescue_line(cja, _lja, _lzh)
                         if ok:
                             out.append(cand)
                         else:
@@ -872,7 +885,7 @@ def translate_block(block, prev_ctx):
                         HALLU["masked"] += 1
                         out.append(SAKURA_FALLBACK)
                         continue
-                    cand, ok, lvl = _rescue_line(ja, _pja, _pzh)
+                    cand, ok, lvl = _rescue_line(ja, _lja, _lzh)
                     if ok:
                         out.append(cand)
                         if lvl == 2:
@@ -968,11 +981,14 @@ def main():
             for bi in wb:
                 idxs = blocks[bi]
                 blk = [(k + 1, lines[i]["text"]) for k, i in enumerate(idxs)]
-                jobs.append((bi, blk, prev_ctx(idxs[0])))
+                i0 = idxs[0]
+                # 本波首块的前文常常整段未译 → 退化给「上一句原文」当 L2 兜底
+                raw = (lines[i0 - 1]["text"], "") if i0 > 0 else None
+                jobs.append((bi, blk, prev_ctx(i0), raw))
 
             def work(job):
-                bi, blk, ctx = job
-                return bi, translate_block(blk, ctx)
+                bi, blk, ctx, raw = job
+                return bi, translate_block(blk, ctx, raw)
 
             with ThreadPoolExecutor(max_workers=WORKERS) as ex:
                 for bi, (res, raw) in ex.map(work, jobs):
@@ -985,7 +1001,8 @@ def main():
         bad = [i for i, v in enumerate(results) if v is None]
         for i in bad:
             try:
-                r, _ = translate_block([(1, lines[i]["text"])], prev_ctx(i))
+                raw = (lines[i - 1]["text"], "") if i > 0 else None
+                r, _ = translate_block([(1, lines[i]["text"])], prev_ctx(i), raw)
                 results[i] = r[0] if r else ""
             except Exception:
                 results[i] = ""
@@ -994,6 +1011,10 @@ def main():
         still = [i for i, v in enumerate(results) if not v]
         for i in still:
             pja, pzh = _last_ctx(prev_ctx(i))
+            if not pja and i > 0:
+                # 前文整段未译 → 退化成「只有上一句原文」；实测 prev_zh 缺省成「（略）」
+                # 也够救回（RJ1058739 `くる、くーる、くーる。` → 「来吧，来吧，来吧。」）
+                pja, pzh = lines[i - 1]["text"], ""
             cand, ok, lvl = _rescue_line(lines[i]["text"], pja, pzh)
             if ok:
                 results[i] = cand
