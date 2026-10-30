@@ -470,6 +470,18 @@ GATE_DEFS = {
     "slot_guard": {"hard": False, "cmd": lambda ctx, d: [
         ctx.py, _script("slot_guard.py"), effective_asr(ctx), ctx.draft_dir(),
         final_dir(ctx), "--report", os.path.join(d, "slot_guard.json")]},
+    # E1 锁覆盖度（2026-10-31 P0）：登记的锁有多少条**真的出现在成品里**。
+    # 以前没有任何门禁管这件事：`polish.apply_lock` 匹配不上就返回原文，日志只写
+    # 「覆写 N 行」，miss 不报错。实测 17 部 1032 条锁只有 547 条落地（53%），
+    # 另一半静默丢失 —— 那是人一句一句听出来的修正。
+    # ⚠️ 现在是**参考项**：存量锁里有相当一部分对应的行早已被重写（历史遗留），
+    #    先把新匹配器跑完全库、把真丢的补回来，再提成硬门禁（与 trunc/semantic 同路径）。
+    "locks": {"hard": False, "cmd": lambda ctx, d: [
+        ctx.py, _script("lock_coverage.py"),
+        "--lrc", os.path.dirname(final_dir(ctx)),
+        "--rj", ctx.project,
+        "--json", os.path.join(d, "lock_coverage.json"),
+        "--max-miss", str(int(ctx.cfg.get("lock_max_miss", 0)))]},
     # 语义覆盖（P2，2026-10-28）：原文出现的具体物被中文泛化成公文腔
     # （おしっこ→排泄行为、ちんこ→那个部位）时，check/scan/trunc 三道全放过。
     # ⚠️ 现在是**参考项**：loss 档已知 8 条未修（全库 23416 行），
@@ -548,6 +560,11 @@ def _summarize(gate, tail, code, d=""):
             return "%d 条（参考）" % n
         except Exception:
             return "通过" if code == 0 else "失败"
+    if gate == "locks":
+        m = re.search(r"合计\s*(\d+)\s*条锁：落地\s*(\d+)\s*/\s*丢失\s*(\d+)", tail)
+        if m:
+            return "落地 %s/%s（丢 %s）" % (m.group(2), m.group(1), m.group(3))
+        return "通过" if code == 0 else "失败"
     if gate == "semantic":
         m = re.search(r"违规\s*(\d+)\s*条（其中真信息丢失 loss\s*(\d+)\s*条", tail)
         if m:
@@ -656,6 +673,7 @@ STAGES = {
         # 漏登记 = 改了代码但指纹不变（R156 的 03 盲区，就是靠 S7 才扫出来的）。
         "code": ["knobs.py", "check.py", "empty_check.py", "scan_violations.py", "errata_audit.py",
                  "test_regressions.py", "repair_overlay.py", "semantic_coverage.py",
+                 "lock_coverage.py",
                  "styleloc.py", "rootloc.py", "asr_halluc.py", "asr_words.py", "cues.py",
                  "polish.py", "pragmatics_hints.py", "translate.py", "entity_ledger.py",
                  "lock_match.py", "mask_nonlexical.py", "term_lock.py"],
@@ -723,6 +741,7 @@ def execute(run, name, cfg, force=False, dry=False):
                                                  models=models)
     print("\n[%s] ▶ %s%s" % (name, desc, "" if dry else "（%s）" % reason))
     run.begin_stage(name, params, inputs, know, code, cache_miss_reason=reason,
+                    fp=fp,
                     extra={"config_hash": FP.config_hash(ctx.cfg),
                            "env": FP.env_whitelist(ctx.cfg),
                            "runner": FP.runner_hash(),

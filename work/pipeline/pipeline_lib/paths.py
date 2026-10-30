@@ -116,12 +116,18 @@ DEFAULTS = {
     # 0 = 一行都不许缺。RJ9000013 曾因 ASR 前缀污染（`９接`）出现 19 行空字幕，
     # check/scan/trunc 三道全放过 —— 空文本行被当成清屏 spacer 了。
     "empty_max_miss": 0.0,
+    # ⚠️ `allow_loss` 在 `fingerprint.CONFIG_KEYS` 里（影响输出），但以前**不在 DEFAULTS**：
+    # `pipeline.py run` 由 `_cfg()` 从命令行补上，`load_config()` 却没有这个键
+    # → 「DEFAULTS + run 快照」算出来的 config_hash 和运行时差一个键，
+    # 快照里恰好没记 allow_loss 的 run（RJ1234441）就永远报「指纹不符」。
+    # 默认值就是 False（丢行必须显式放行），补上它让两条路径同口径。
+    "allow_loss": False,
     "profiles": {
         "production": {
             "stages": ["01_asr", "02_asr_fix", "03_translate", "04_polish",
                        "05_term_lock", "06_checks"],
             "gates": ["check", "empty", "scan", "errata_audit", "test_regressions",
-                      "overlay", "trunc", "slot_guard", "semantic"],
+                      "overlay", "trunc", "slot_guard", "semantic", "locks"],
         },
         "fast": {
             "stages": ["01_asr", "02_asr_fix", "03_translate", "04_polish",
@@ -131,7 +137,7 @@ DEFAULTS = {
         "checks": {
             "stages": ["06_checks"],
             "gates": ["check", "empty", "scan", "errata_audit", "test_regressions",
-                      "overlay", "trunc", "slot_guard", "semantic"],
+                      "overlay", "trunc", "slot_guard", "semantic", "locks"],
         },
     },
 }

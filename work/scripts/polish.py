@@ -71,8 +71,92 @@ LOCK_OLD = {}    # (file, old_text) -> 锁定文本（历史兜底）
 LOCK_RAW = {}    # (file, ts) -> {zh, ja}（喂给 lock_match）
 LOCK_JA = {}     # (file, norm_ja) -> [ts, ...]（备 key；同句多锁时不用）
 LOCK_N = [0]     # 本 run 实际覆写行数
-LOCK_JA_HIT = [0]  # 其中「靠日文认回来」的行数（时间戳漂了）
-LOCK_AMBIG = set()  # 同句多锁、无法唯一匹配的 (file, ts)
+LOCK_JA_HIT = [0]  # 其中「不是按时间戳、而是靠文本/时间锚定认回来」的行数
+LOCK_AMBIG = set()  # 分数太接近、不猜的 (file, ts)
+LOCK_UNMATCHED = set()  # 整轨都找不到落点的锁 (file, ts)
+LOCK_CUE = {}    # {cue_idx: [rec, ...]} 当前轨的锁分配（写盘时按最近时间取用）
+LOCK_STAT = {"assign": 0, "unmatched": 0, "ambiguous": 0, "tracks": 0, "detail": {},
+             # 逐条落点（key → {how, cue, lock_ts, row_ts, written}）：排查「分配了却没写」
+             # 这类静默丢失时，没有这张表就只能靠猜。
+             "records": {}}
+
+
+def assign_locks_for_track(fn, lines):
+    """写盘前把该轨的锁分给 cue（v3 文本锚定，见 lock_match.assign_cues）。
+
+    为什么在写盘**前**做：锁的 key 是**显示行**时间戳，但一条 cue 会被
+    `render_display_lines` 切成 1~3 个显示行，切法依赖最终译文 —— 写盘时才拿得到行清单。
+    先按 cue 分（cue 的 start/end/ja 写盘前就确定），写盘时再落到最近的显示行。
+    """
+    LOCK_CUE.clear()
+    if not LOCK_RAW:
+        return
+    cues = [(i, ln["start"], ln.get("end") or ln["start"], ln.get("text", ""))
+            for i, ln in enumerate(lines)]
+    assign, unmatched, ambig = lock_match.assign_cues(LOCK_RAW, fn, cues)
+    LOCK_CUE.update(assign)
+    for k in unmatched:
+        LOCK_UNMATCHED.add(k)
+    for k in ambig:
+        LOCK_AMBIG.add(k)
+    for idx, recs in assign.items():
+        for r in recs:
+            LOCK_STAT["records"]["%s|%s" % r["key"]] = {
+                "how": r["how"], "cue": idx, "lock_ts": r["t"],
+                "row_ts": None, "sim": r["sim"], "drift": r["drift"]}
+    LOCK_STAT["assign"] += sum(len(v) for v in assign.values())
+    LOCK_STAT["unmatched"] += len(unmatched)
+    LOCK_STAT["ambiguous"] += len(ambig)
+    LOCK_STAT["tracks"] += 1
+    if unmatched or ambig:
+        LOCK_STAT["detail"][fn] = {
+            "assigned": sum(len(v) for v in assign.values()),
+            "unmatched": ["%s|%s" % k for k in unmatched],
+            "ambiguous": ["%s|%s" % k for k in ambig]}
+
+
+def apply_lock(fn, ts, text, ja="", cue_idx=None):
+    """返回该行最终文本：命中锁则用锁定文本（逐字，不再过 cleanup）。
+
+    v3（2026-10-31，P0）：**cue 级文本锚定**。锁先分给 cue（`assign_locks_for_track`），
+    写盘时按「离锁时间戳最近的显示行」取用 —— 同一条 cue 切成多个显示行时，
+    人工逐行锁过的几条都能各自落到对应行上。
+
+    `cue_idx=None` 时退回单行视图（`lock_match.lookup`），仅供 `test_lock_apply.py`
+    和外部调用；**生产写盘一律走 cue 级**，否则看不到整轨、没法靠时间消歧。
+    """
+    if cue_idx is not None:
+        recs = LOCK_CUE.get(cue_idx)
+        if not recs:
+            return text
+        t = lock_match.parse_ts(ts)
+        bi, bd = -1, 1e9
+        for i, r in enumerate(recs):
+            d = abs(r["t"] - t) if t is not None else 1e8
+            if d < bd:
+                bi, bd = i, d
+        if bi < 0 or bd > lock_match.WINDOW:
+            return text
+        r = recs.pop(bi)          # 一条锁只落到一行，落完即消费
+        _rec = LOCK_STAT["records"].get("%s|%s" % r["key"])
+        if _rec is not None:
+            _rec["row_ts"] = t
+            _rec["written"] = (r["zh"] != text)
+        if r["zh"] != text:
+            LOCK_N[0] += 1
+            if r["how"] != "ts":
+                LOCK_JA_HIT[0] += 1
+        return r["zh"]
+    v, how = lock_match.lookup(LOCK_RAW, LOCK_JA, LOCK_OLD, fn, ts, text, ja)
+    if how == "ambiguous":
+        LOCK_AMBIG.add((fn, ts))
+        return text
+    if v is not None and v != text:
+        LOCK_N[0] += 1
+        if how != "ts":
+            LOCK_JA_HIT[0] += 1
+        return v
+    return text
 
 
 def load_locks(out_dir):
@@ -110,26 +194,6 @@ def load_locks(out_dir):
         n += 1
     LOCK_JA.update(lock_match.build_ja_index(LOCK_RAW))
     return n
-
-
-def apply_lock(fn, ts, text, ja=""):
-    """返回该行最终文本：命中锁则用锁定文本（逐字，不再过 cleanup）。
-
-    2026-10-26（GPT Q11）：**双 key**。
-      主 key = 时间戳；时间戳漂了（重跑 ASR 分段变了）→ 备 key = 规范化日文，
-      但**只在该轨内唯一时**才用；同一句出现多次一律不猜（记 LOCK_AMBIG，交人工）。
-    这样「重跑 ASR 后人工修正全丢」的问题被兜住，又不会把锁套到重复句上。
-    """
-    v, how = lock_match.lookup(LOCK_RAW, LOCK_JA, LOCK_OLD, fn, ts, text, ja)
-    if how == "ambiguous":
-        LOCK_AMBIG.add((fn, ts))
-        return text
-    if v is not None and v != text:
-        LOCK_N[0] += 1
-        if how == "ja":
-            LOCK_JA_HIT[0] += 1
-        return v
-    return text
 
 
 # ---- E2 cue 级缓存签名（2026-10-21，借鉴 ASMR-Dubber 的「改一句只重做一句」）----
@@ -2569,6 +2633,10 @@ def main():
         jp_drop = []
         unver = []
         n_spacer = 0
+        # E1 锁 v3（2026-10-31）：**写盘前**把本轨的锁按文本锚定分给 cue。
+        # 必须在写盘前做 —— 显示行切分依赖最终译文，写盘时才拿得到行清单；
+        # 而 cue 的 start/end/ja 早就确定了，所以按 cue 分配是唯一稳定的锚点。
+        assign_locks_for_track(src, lines)
         with open(out, "w", encoding="utf-8") as f:
             f.write("[ti:%s]\n[by:%s]\n\n" % (src, MODEL_TAG))
             keep = 0
@@ -2642,7 +2710,8 @@ def main():
                     for _t, _tx in _out:
                         if _tx:
                             # E1：句级锁定（人工修正逐字保留，不因重跑丢失）
-                            _tx = apply_lock(src, fmt_lrc(_t), _tx, ln.get("text", ""))
+                            _tx = apply_lock(src, fmt_lrc(_t), _tx, ln.get("text", ""),
+                                             cue_idx=idx)
                         if _tx and _tx == _prev_tx:
                             continue
                         _prev_tx = _tx
@@ -2653,7 +2722,8 @@ def main():
                             n_spacer += 1
                 else:
                     # E1：句级锁定（人工修正逐字保留，不因重跑丢失）
-                    txt = apply_lock(src, fmt_lrc(ln["start"]), zh, ln.get("text", ""))
+                    txt = apply_lock(src, fmt_lrc(ln["start"]), zh, ln.get("text", ""),
+                                     cue_idx=idx)
                     f.write("%s%s\n" % (fmt_lrc(ln["start"]), txt))
                     keep += 1
         if unver:
@@ -2682,11 +2752,21 @@ def main():
         if LOCK_N[0]:
             print("    句级锁定覆写 %d 行（人工修正已保留%s）"
                   % (LOCK_N[0],
-                     "；其中 %d 行按日文认回（时间戳已漂）" % LOCK_JA_HIT[0]
+                     "；其中 %d 行靠文本/时间锚定认回（时间戳已漂）" % LOCK_JA_HIT[0]
                      if LOCK_JA_HIT[0] else ""), flush=True)
         if LOCK_AMBIG:
-            print("    ⚠️ 锁失配待人工 %d 处（同句多锁，未自动套用）" % len(LOCK_AMBIG),
+            print("    ⚠️ 锁失配待人工 %d 处（候选分数太接近，不猜）" % len(LOCK_AMBIG),
                   flush=True)
+            for f, t in sorted(LOCK_AMBIG)[:5]:
+                print("       [歧义] %s|%s" % (f[:36], t), flush=True)
+        # 本轨没落点的锁：**不是**「本来就没落地」，而是「这一版找不到它该在哪」。
+        # 静默丢人工修正是本项目最贵的故障（beta.15 前 47% 的锁就这么没的），所以必须报。
+        _un = sorted(k for k in LOCK_UNMATCHED if k[0] == src)
+        if _un:
+            print("    ⚠️ 本轨 %d 条锁找不到落点（无 cue 在锚定窗口内）" % len(_un),
+                  flush=True)
+            for f, t in _un[:5]:
+                print("       [无落点] %s|%s" % (f[:36], t), flush=True)
         for ts, t in jp_drop:
             print("    [丢弃日文残留] %s %s" % (ts, t), flush=True)
         for ln, zh in list(zip(lines, results))[:5]:
@@ -2768,6 +2848,31 @@ def main():
 
     if _use_cache and _cache_hit_total:
         print("E2 缓存合计命中 %d 条（%s）" % (_cache_hit_total, _sig_path))
+
+    # ---- E1 锁落点账本（2026-10-31 P0）----
+    # 「声明 == 实际」的可核对形式：登记的锁有多少条找到了落点、多少条没有。
+    # ⚠️ 这里记的是**分配**结果，不是最终成品 —— 后面 term_repair/term_lock 还会改文本。
+    # 真正的覆盖度由 06_checks 的 `locks` 门禁拿成品 LRC 重新核（不信这份自述）。
+    if LOCK_STAT["tracks"]:
+        _doc = {
+            "run_id": _RUN_ID[0],
+            "window": lock_match.WINDOW,
+            "tracks": LOCK_STAT["tracks"],
+            "registered": len(LOCK_RAW),
+            "assigned": LOCK_STAT["assign"],
+            "unmatched": LOCK_STAT["unmatched"],
+            "ambiguous": LOCK_STAT["ambiguous"],
+            "overwritten_rows": LOCK_N[0],
+            "anchored_rows": LOCK_JA_HIT[0],
+            "detail": LOCK_STAT["detail"],
+            "records": LOCK_STAT["records"],
+        }
+        json.dump(_doc, open(os.path.join(a.out_dir, "_lock_assign.json"), "w",
+                             encoding="utf-8"), ensure_ascii=False, indent=1)
+        print("E1 锁：登记 %d / 落点 %d / 无落点 %d / 歧义 %d（明细 _lock_assign.json）"
+              % (_doc["registered"], _doc["assigned"], _doc["unmatched"],
+                 _doc["ambiguous"]))
+
     print("\n全部完成 ->", a.out_dir)
 
 

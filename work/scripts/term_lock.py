@@ -55,6 +55,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import styleloc  # noqa: E402
+import rootloc   # noqa: E402  （E1 锁豁免要读 <work>/data/locks）
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +488,15 @@ def main():
     ap.add_argument("--check", action="store_true",
                     help="只做「允许集校验」：日文命中术语但中文没用允许译法/用了禁用译法 → 只报不改")
     ap.add_argument("--json", default="", help="--check 时把明细写到这个 json")
+    # E1 锁豁免（2026-10-31 P0）。背景：term_lock 是**多数票**决策，而 E1 锁是
+    # **人工逐句裁定**。实测 RJ01654115 上，polish 先把「连肉棒都不给撸一撸吗？」
+    # 写进成品，紧接着本脚本按作品多数票（鸡鸡=70 vs 肉棒=4）把它改回「鸡鸡」——
+    # 人工修正被统计规律静默推翻，日志只写「改写 11 处」。覆盖率门禁才抓出来。
+    # 人工裁定优先于统计，所以默认跳过「当前文本 == 某条锁的 zh」的行。
+    ap.add_argument("--locks", default="",
+                    help="E1 锁目录（默认 <work>/data/locks）：命中的行不参与覆写")
+    ap.add_argument("--no-lock-guard", dest="no_lock_guard", action="store_true",
+                    help="关掉 E1 锁豁免（A/B 用）")
     a = ap.parse_args()
 
     only = [x for x in a.only.split(",") if x] or list(LOCK_TERMS.keys())
@@ -496,6 +506,41 @@ def main():
         return
 
     print("待处理 %d 个 LRC，锁定组：%s" % (len(files), ", ".join(only)))
+
+    # ---- E1 锁豁免表：{文件名: {锁定文本, ...}} ----
+    # 用**文本**匹配而不是时间戳：重跑后 cue 边界会漂 0.3~1.6s，按时间戳比必然漏。
+    locked_texts = {}
+    if not a.no_lock_guard:
+        _ld = a.locks or os.path.join(rootloc.DATA, "locks")
+        _found = 0
+        for f in files:
+            rj = os.path.basename(os.path.dirname(os.path.abspath(f)))
+            lp = os.path.join(_ld, rj + ".json")
+            if not os.path.exists(lp):
+                continue
+            try:
+                d = json.load(open(lp, encoding="utf-8"))
+            except Exception:
+                continue
+            stem = os.path.basename(f)[:-4]
+            s = set()
+            for k, v in (d or {}).items():
+                if "|" not in k:
+                    continue
+                fn, _ts = k.split("|", 1)
+                if fn.lower().endswith(".lrc"):
+                    fn = fn[:-4]
+                if fn != stem:
+                    continue
+                zh = (v.get("zh") if isinstance(v, dict) else str(v)) or ""
+                if zh.strip():
+                    s.add(zh.strip())
+            if s:
+                locked_texts[f] = s
+                _found += len(s)
+        if _found:
+            print("  E1 锁豁免：%d 条锁文本不参与确定性覆写（人工裁定优先于多数票）"
+                  % _found)
 
     # ---- 第一遍：全作品数票（跨轨统一）----
     all_texts = []
@@ -615,7 +660,15 @@ def main():
         rows = cache[f]
         changed = 0
         spk_row = row_spk.get(f) or [None] * len(rows)
+        _lkd = locked_texts.get(f) or ()
+        lock_skipped = 0
         for i, (ts, txt) in enumerate(rows):
+            # E1 锁行整行跳过：人工逐句裁定 > 作品级多数票。
+            # ⚠️ 连 BAN_TERMS 也一起跳 —— 锁是人写的，出现禁用词是人的选择，
+            # 该由覆盖率门禁/人工复核发现，不该被脚本悄悄改掉。
+            if _lkd and txt.strip() in _lkd:
+                lock_skipped += 1
+                continue
             cur = txt
             sec = ts_to_sec(ts)
             ja_line = ja_at(f, sec) if sec is not None else None
@@ -649,6 +702,8 @@ def main():
             print("  %s：改写 %d 处" % (os.path.basename(f), changed))
             if a.apply:
                 save_lrc(f, rows)
+        if lock_skipped:
+            print("    （E1 锁行跳过 %d 行，不改写）" % lock_skipped)
 
     print("\n合计改写 %d 处。" % total)
     if ban_total:

@@ -182,8 +182,20 @@ class Run(object):
         return self.data["stages"].get(name)
 
     def begin_stage(self, name, params, inputs, knowledge, code,
-                    cache_miss_reason="", extra=None):
-        fp = fingerprint(name, params, inputs, knowledge, code)
+                    cache_miss_reason="", extra=None, fp=None):
+        """⚠️ `fp` 必须由调用方传入（`stages.execute` 里算好的那个）。
+
+        2026-10-31 修的坑：这里原来自己调 `manifest.fingerprint()`（**5 字段的旧版**：
+        stage/params/inputs/knowledge/code），而 `execute` 用来比对的、`acceptance.py`
+        用来验收的都是 `FP.stage_fingerprint()`（**9 字段**：多了 config/config_hash/
+        env/models/runner）。两边永远不相等 → **缓存命中率恒为 0，每个阶段每次都重跑**，
+        且 `acceptance` 的「阶段指纹 = 当前代码」这条声明永远不成立。
+
+        这正是本项目最怕的「声明 ≠ 执行」：日志写「指纹不符」看着像正常失效，
+        实际是**两套指纹算法**。修法是**只算一次**，由调用方把同一个值传进来，
+        从结构上消灭「两个地方各算一份」的可能。
+        """
+        fp = fp if fp else fingerprint(name, params, inputs, knowledge, code)
         st = {
             "name": name,
             "status": "running",
