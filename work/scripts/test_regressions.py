@@ -1219,6 +1219,18 @@ SAKURA_DIRTY = [
     ("Okay, now I am going to show you", "はい、じゃあ今から見せてあげるね", "latin"),
 ]
 
+# 显示切分：句末标点必须优先于逗号（2026-10-30 修「回吐」）
+# (成稿中文, k, 期望的第一行)
+SPLIT_SENT_CASES = [
+    # 旧行为切成「晚安。不行」/「老师可能会来巡视。」——下句首词被留在上一行
+    ("晚安。不行，老师可能会来巡视。", 2, "晚安。"),
+    # 逗号更靠近理想点，但句号在 4 字内 → 仍然选句号
+    ("锵锵 已经不行了，不行了。精子把偶然收缩的精子也推出来了。", 2,
+     "锵锵 已经不行了，不行了。"),
+    # 没有句号时照旧用逗号（不能因为偏好句号就不切）
+    ("就这样射出来，像往常一样正义", 2, "就这样射出来，"),
+]
+
 
 def check_sakura_guard(verbose):
     """`translate._sakura_bad` 的判定护栏。"""
@@ -1237,6 +1249,42 @@ def check_sakura_guard(verbose):
             bad.append((ja[:20], "应判 %s，实际 %s" % (kind, why or "干净")))
         elif verbose:
             print("   ✅ 拦下 %s" % ja[:20])
+    return bad
+
+
+def check_emit_and_split(verbose):
+    """① 空译文不得丢行（03 写盘）② 切点句末标点优先（04 显示行）。"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import translate as T
+    import cues as C
+    bad = []
+
+    # ① emit_lines：空 / None / 纯空格都必须写占位，行数必须与输入一致
+    lines = [{"start": 1.0}, {"start": 2.5}, {"start": 4.0}, {"start": 5.5}]
+    rows, dropped = T.emit_lines(lines, ["你好", "", None, "  世界 "])
+    if len(rows) != len(lines):
+        bad.append(("emit_lines", "行数 %d ≠ 输入 %d（空译文被跳过）" % (len(rows), len(lines))))
+    elif [z for _, z in rows][1:3] != [T.SAKURA_FALLBACK] * 2:
+        bad.append(("emit_lines", "空译文没写占位：%s" % [z for _, z in rows]))
+    elif dropped != [2.5, 4.0]:
+        bad.append(("emit_lines", "兜底行号不对：%s" % dropped))
+    elif verbose:
+        print("   ✅ 空译文写占位，行数守恒")
+
+    # ①b 正常行不能被改写
+    rows2, dropped2 = T.emit_lines([{"start": 1.0}], ["  你好  世界 "])
+    if rows2 != [(1.0, "你好 世界")] or dropped2:
+        bad.append(("emit_lines", "正常行被改动：%s %s" % (rows2, dropped2)))
+    elif verbose:
+        print("   ✅ 正常行原样保留（只压空白）")
+
+    # ② 切点偏好
+    for zh, k, want in SPLIT_SENT_CASES:
+        parts = C._split_by_points(zh, C.split_points(zh), k)
+        if not parts or parts[0] != want:
+            bad.append(("split", "%r 期望首行 %r，实际 %r" % (zh[:16], want, parts)))
+        elif verbose:
+            print("   ✅ 切点 %r -> %r" % (zh[:16], parts))
     return bad
 
 
@@ -1481,6 +1529,12 @@ def main():
     print("   %d/%d 通过 %s" % (_n3p - len(bad3p), _n3p,
                               "✅" if not bad3p else "❌ " + str(bad3p)))
 
+    print("\n=== 3q. 空译文不丢行 + 切点句号优先（2026-10-30）===")
+    bad3q = check_emit_and_split(verbose)
+    _n3q = 2 + len(SPLIT_SENT_CASES)
+    print("   %d/%d 通过 %s" % (_n3q - len(bad3q), _n3q,
+                              "✅" if not bad3q else "❌ " + str(bad3q)))
+
     print("\n=== 4. 全量泄漏告警（信息项）===")
     w = check_warnings(verbose)
     print("   告警 %d 处（含真重复/叠词，仅供参考）" % len(w))
@@ -1488,7 +1542,7 @@ def main():
     ok = (ok0 and not bad1 and not bad2 and not bad3 and not bad3b
           and not bad3c and not bad3d and not bad3d2 and not bad3e and not bad3e2
           and not bad3f and not bad3g and not bad3h and not bad3i and not bad3k and not bad3l
-          and not bad3m and not bad3n and not bad3o and not bad3p)
+          and not bad3m and not bad3n and not bad3o and not bad3p and not bad3q)
     if SKIPPED:
         print("\n跳过 %d 项（缺数据，公开仓库 clone 下来的正常状态）：" % len(SKIPPED))
         for s in SKIPPED[:5]:

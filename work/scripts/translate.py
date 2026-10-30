@@ -809,6 +809,27 @@ def fmt_lrc(sec):
     return "[%02d:%05.2f]" % (int(m), s)
 
 
+def emit_lines(lines, results):
+    """成稿 → [(start, zh)] + 被兜底的行号列表。
+
+    ⚠️ **空译文必须写占位，不能跳过**（2026-10-30 修）。
+    旧写法 `if not zh: continue` 会让整行不写 → 时间轴少一行。上游是
+    「块解析失败 → 逐句兜底也返回空」，日志只写「136 行 → 已写出 135 行」，
+    看不出是哪一句没了；06 的 empty 门禁能抓到，但只能靠 fill_timeline 手工补「…」。
+    实测 RJ1530549 轨07 `04:44.10 リリアも気持ちいいよ` 就这样蒸发。
+
+    抽成独立函数是为了能写回归测试（`test_regressions.py` 4b 组）。
+    """
+    rows, dropped = [], []
+    for ln, zh in zip(lines, results):
+        zh = re.sub(r"\s+", " ", (zh or "")).strip()
+        if not zh:
+            dropped.append(ln["start"])
+            zh = SAKURA_FALLBACK
+        rows.append((ln["start"], zh))
+    return rows, dropped
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("asr_dir")
@@ -886,16 +907,17 @@ def main():
                   flush=True)
 
         out = os.path.join(a.out_dir, src + ".lrc")
+        rows, dropped = emit_lines(lines, results)
         with open(out, "w", encoding="utf-8") as f:
             f.write("[ti:%s]\n[by:%s]\n\n" % (src, MODEL_TAG))
-            keep = 0
-            for ln, zh in zip(lines, results):
-                zh = re.sub(r"\s+", " ", (zh or "")).strip()
-                if not zh:
-                    continue
-                f.write("%s%s\n" % (fmt_lrc(ln["start"]), zh))
-                keep += 1
-        print("    已写出 %d 行 -> %s" % (keep, out), flush=True)
+            for t, zh in rows:
+                f.write("%s%s\n" % (fmt_lrc(t), zh))
+        if dropped:
+            print("    ⚠️ 空译文 %d 行，已写「%s」占位（时间轴保住，内容待补）：%s"
+                  % (len(dropped), SAKURA_FALLBACK,
+                     ", ".join("%.2f" % t for t in dropped[:8])
+                     + ("…" if len(dropped) > 8 else "")), flush=True)
+        print("    已写出 %d 行 -> %s" % (len(rows), out), flush=True)
 
     print("\n全部完成 ->", a.out_dir)
 

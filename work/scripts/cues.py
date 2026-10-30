@@ -156,6 +156,13 @@ POLITE_MIN_GAP = float(os.environ.get("KIKOERU_CUE_POLITE_GAP", "0"))
 POLITE_MERGE_MIN = int(os.environ.get("KIKOERU_CUE_POLITE_MERGE_MIN", "8"))
 SPLIT_AFTER = "。！？…；、，"   # 允许切在中文这些字符之后
 SPLIT_AFTER_SPACE = " "        # 半角空格后也可切
+# 句末标点优先于逗号/顿号（2026-10-30 修「回吐」）。
+# 旧写法「吸附到最近合法切点」会把下一句的首词留在上一行：
+#   「晚安。不行，老师可能会来巡视。」 15 字切 2 行，理想点 7.5，
+#   最近的合法切点是逗号后（6），于是切成「晚安。不行」/「老师可能会来巡视。」
+# 现在给非句末切点加 CHAR 级惩罚：句末标点哪怕远 4 个字也优先。
+SPLIT_SENT_END = "。！？…"
+SPLIT_SENT_BONUS = 4
 BAD_BEFORE = "的地得了着过"     # 切点前是这些 → 禁止
 BAD_AFTER = "的地得了着过"      # 切点后是这些 → 禁止
 NEG_CHARS = "不没别未否莫免无勿"
@@ -412,8 +419,14 @@ def split_points(zh, glossary=None):
         if any((zh.find(t) < i < zh.find(t) + len(t)) for t in terms if t in zh):
             continue
         # 禁止：任一侧不足 MIN_CJK_CHARS 个可读汉字
-        if cjk_len(zh[:i]) < MIN_CJK_CHARS or cjk_len(zh[i:]) < MIN_CJK_CHARS:
-            continue
+        # ⚠️ **句末标点后豁免**（2026-10-30）：`晚安。不行，老师可能会来巡视。` 的 `。` 后
+        # 只有 2 个汉字，被这条挡掉 → 全串只剩一个合法切点（逗号后 6），于是切成
+        # 「晚安。不行」/「老师可能会来巡视。」——下一句的首词被留在上一行（「回吐」）。
+        # 完整句独立成行是可接受的（「晚安。」本来就该单独一行）；时长仍受 MIN_LINE_SEC
+        # 约束，`build()` 会把停留过短的行并回下一段。
+        if zh[i - 1] not in SPLIT_SENT_END:
+            if cjk_len(zh[:i]) < MIN_CJK_CHARS or cjk_len(zh[i:]) < MIN_CJK_CHARS:
+                continue
         # 空格切点：相邻「词」不能是单字。
         # 呻吟/结巴常写成「不 要 停 下 来」这种单字串，按空格切会切碎语义；
         # 而正常译文里空格分隔的是短语（「不要 不要这样」），两侧至少有一侧 ≥2 字。
@@ -427,14 +440,21 @@ def split_points(zh, glossary=None):
 
 
 def _split_by_points(zh, pts, k):
-    """把 zh 按字符数均分成 k 段，边界吸附到最近的合法切点。"""
+    """把 zh 按字符数均分成 k 段，边界吸附到最近的**合法切点**。
+
+    ⚠️ 吸附时**句末标点优先**（2026-10-30）：给非句末切点加 `SPLIT_SENT_BONUS` 字符的
+    惩罚，否则会把下一句首词留在上一行（「晚安。不行」/「老师可能会来巡视。」）。
+    惩罚是字符级的，句末标点离理想点远 4 字以内都仍然胜出；远太多时照样用逗号。
+    """
     total = len(zh)
     cuts = []
     for j in range(1, k):
         ideal = total * j / k
         if not pts:
             break
-        best = min(pts, key=lambda p: abs(p - ideal))
+        def cost(p):
+            return abs(p - ideal) + (0 if zh[p - 1] in SPLIT_SENT_END else SPLIT_SENT_BONUS)
+        best = min(pts, key=cost)
         if best not in cuts:
             cuts.append(best)
     cuts.sort()
