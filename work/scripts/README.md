@@ -762,6 +762,34 @@ python repair_overlay.py --reject  t09-0312        # 原译更好 → 经 fixlin
 - `production_zh`（2026-10-26 R135 结案时新增）：确认那一刻**盘上的文本**。`proposed_zh` 会随后续
   批次微调/拆行而过时，别拿它当成品文本引用；两者不一致时 `note` 会写明原因。
 
+### rebase_overlay_by_text.py —— 按**文本**重绑覆盖层时间轴（2026-10-31）
+
+`repair_overlay` 的主键是精确 `t0`（`abs(t-t0) < 0.02`）。流水线一动切分
+（`SEG_FLUSH_CHARS` 16→10、VAD、重采样），cue 边界就漂 0.3~1.6 秒，
+**所有按时间戳强绑定的条目会瞬间脱靶**——实测 78 条里 54 条失效，且 `--check` 每部 run
+都扫全库，一次全库重跑刷出 864 条警告。
+
+这个脚本把寻址方式换成语义锚定：用条目里记录的日文（`proposed_ja`）在当前 ASR 里重新定位。
+
+```bash
+python rebase_overlay_by_text.py                  # 只出 diff（默认，不写盘）
+python rebase_overlay_by_text.py --rj RJ1352698   # 只跑一个作品
+python rebase_overlay_by_text.py --apply          # 改成品 + 重写 t0 + 重打 E1 锁
+```
+
+两级寻址：同轨 + 时间窗口（默认 6s）→ 打分 `0.7*sim + 0.3*(1-漂移/窗口)`。
+
+- `sim = max(lcs_ratio, jaccard_2gram)`。**不能用整体相似度**：条目里的 ja 是人工修正过的
+  完整句，ASR 是碎片（一句被切成多段），`SequenceMatcher.ratio ≥ 0.85` 只有 12/78；
+  最长公共子串能到 22/78。而 lcs 只找连续公共子串，`さくらの胸が` vs `桜の胸が`
+  一换写法就断（实测 0.32），所以再加 2-gram Jaccard 兜住。
+- 另一条更硬的判据：**2.5 秒内候选唯一** → 直接 auto。漂 0.4s 的条目文本 sim 可能只有 0.4。
+- 反过来，文本路径要限 `|漂移| <= 2.0`：短句（`大きくなってる`）一轨出现多次，
+  6 秒窗口里 sim 会虚高到 1.00（实测 `t00-0961` 漂 3.06s 就是这样，已被这条拦下）。
+- 输出 `tmp/overlay_migration_diff.json`：`already_ok` / `auto` / `manual` 三态，
+  每条带 `anchor_ja` / `matched_ja` / `lrc_now` / `proposed_zh`，供人工核对后再 `--apply`。
+- ⚠️ `--apply` 会**改成品 LRC**（走 `fixline`，自带备份），只处理 `auto`。
+
 ### term_family.py —— 术语族盘点（2026-10-25 T3）
 
 一次跑出「一个概念的 ja 写法分布 + zh 译法分布 + 作品分布」，频次同时报**原始/去重后**。
