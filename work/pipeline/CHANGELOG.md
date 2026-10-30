@@ -6,6 +6,33 @@
 
 ---
 
+## v0.1.0-beta.12 — 2026-10-30（DEFAULTS 对齐 + 验收脚本）
+
+### 1. `paths.DEFAULTS` 与交付口径对齐
+
+`engine` 从 `hymt` 改成 `sakura`、`polish_cleanup_only` 从 `False` 改成 `True`。
+以前 DEFAULTS 是旧路线、`pipeline.json` 是新路线，**配置文件一旦缺失/改名，
+`load_config()` 就静默退回旧路线**——成品看着正常、其实换了引擎（R153 同族）。
+改完 `resolved_config()` 对现有 run 输出不变（各 run 的 config 都带显式值），
+产物逐字节不受影响，指纹已按 `scripts/restamp.py` 重打。
+
+### 2. 新增两个验收工具（进库，`tmp/` 是 gitignore）
+
+- `scripts/acceptance.py`：一条命令验 6 类交付声明——音频↔字幕覆盖、成品 = run 逐字节、
+  17×6 阶段指纹、门禁/自检、语义覆盖、死路径。任何一条不成立退出码 1。
+  **台账里的每个数字都应该能由它复现**，这是「声明 == 实际」的可执行形式。
+- `scripts/path_audit.py`：扫写死的项目内绝对路径（三层目录改造的典型残留）。
+  首次运行抓出 14 个失效的一次性脚本（`probe_*` / `fix_*` / `msg_filter` 等），已删。
+
+### 3. 文档对齐
+
+`README` 的六阶段描述改成实际口径（Sakura 初译 + cleanup-only 后处理，不再写 HY-MT / Qwen）、
+`selftest` 13 → 19 项；`work/README` 修正 `asr_latin_halluc.py` → `asr_halluc.py`；
+`docs/INDEX.md` 里 6 处三层改造前的旧路径（`.workbuddy/style/*` → `data/style/*`、
+`TODO_20261029` → `TODO_20261030`、已删的 `listen_pending_1026` / `showcase_20261026`）改成真实路径。
+
+---
+
 ## v0.1.0-beta.11 — 2026-10-30（指纹补全 + 旋钮单一真相）
 
 主题：**「声明 ≠ 实际」第五例——阶段指纹看不见自己真正的依赖**。
