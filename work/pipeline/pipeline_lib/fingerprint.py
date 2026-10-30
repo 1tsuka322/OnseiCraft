@@ -23,7 +23,7 @@ import os
 # 影响输出的配置键（其余如 python 解释器路径、_gates、_note 一律不进）
 CONFIG_KEYS = ("engine", "cue_pipeline", "slots", "system_mode", "allow_loss",
                "spk_prefix", "track_memory", "device", "compute", "ext",
-               "diarize", "diarize_thr")
+               "diarize", "diarize_thr", "seg_flush_chars", "chunk")
 
 # 模型路径常量（抄自 serve.py；不 import 它，避免副作用）
 GGUF = {
@@ -104,8 +104,9 @@ def env_whitelist(cfg, stage=None):
     """
     env = {}
     if stage in ("03_translate", "04_polish"):
-        env["KIKOERU_SEG_FLUSH_CHARS"] = str(_knobs().SEG_FLUSH_CHARS)
-        env["KIKOERU_CHUNK"] = str(_knobs().CHUNK)
+        env["KIKOERU_SEG_FLUSH_CHARS"] = str(int(cfg.get("seg_flush_chars",
+                                                          _knobs().SEG_FLUSH_CHARS)))
+        env["KIKOERU_CHUNK"] = str(int(cfg.get("chunk", _knobs().CHUNK)))
     if cfg.get("engine"):
         env["KIKOERU_ENGINE"] = str(cfg["engine"])
     if cfg.get("cue_pipeline") is not None:

@@ -42,6 +42,10 @@ class Ctx(object):
         if cfg.get("engine"):
             self.env["KIKOERU_ENGINE"] = str(cfg["engine"])
         self.env["KIKOERU_CUE_PIPELINE"] = str(int(cfg.get("cue_pipeline", 1)))
+        # 切分旋钮同样「谁调谁传」：cfg → env → scripts/knobs.py。
+        # 不传的话脚本会吃 knobs.py 里的默认值，cfg 改了等于没改（R156 的教训）。
+        self.env["KIKOERU_SEG_FLUSH_CHARS"] = str(int(cfg.get("seg_flush_chars", 10)))
+        self.env["KIKOERU_CHUNK"] = str(int(cfg.get("chunk", 3)))
         if cfg.get("spk_prefix"):
             self.env["KIKOERU_SPK_PREFIX"] = "1"
         if cfg.get("track_memory"):
@@ -602,8 +606,8 @@ STAGES = {
         "params": lambda ctx: {"engine": ctx.cfg.get("engine", "hymt"),
                                "cue_pipeline": int(ctx.cfg.get("cue_pipeline", 1)),
                                "slots": ctx.cfg.get("slots"),
-                               "seg_flush_chars": FP._knobs().SEG_FLUSH_CHARS,
-                               "chunk": FP._knobs().CHUNK},
+                               "seg_flush_chars": int(ctx.cfg.get("seg_flush_chars", 10)),
+                               "chunk": int(ctx.cfg.get("chunk", 3))},
         "inputs": lambda ctx: [manifest.dir_rec(effective_asr(ctx), "*.json")],
     },
     "04_polish": {

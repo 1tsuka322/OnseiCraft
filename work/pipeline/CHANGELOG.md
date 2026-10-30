@@ -6,6 +6,23 @@
 
 ---
 
+## v0.1.0-beta.13 — 2026-10-30（切分旋钮上提到 cfg）
+
+`seg_flush_chars` / `chunk` 从「环境变量 + `knobs.py` 默认值」上提为 **cfg 一等公民**：
+
+- `paths.DEFAULTS` 加 `seg_flush_chars: 10` / `chunk: 3`
+- `pipeline.json` 正式声明（值不变）
+- `Ctx.__init__` 显式注入 `KIKOERU_SEG_FLUSH_CHARS` / `KIKOERU_CHUNK`
+  （不注入的话脚本吃 `knobs.py` 的默认值，改 cfg 等于没改 —— R156 的教训）
+- `fingerprint.CONFIG_KEYS` 加这两键；`env_whitelist` 与 03 的 `params` 都从 cfg 取
+
+**入口顺序**：`pipeline.json` > 环境变量（临时 A/B 用）> `knobs.py` 默认（只在不经管线时生效）。
+
+验收：值未变（10/3）→ 产物逐字节不变；17 部 × 6 阶段指纹重打后全部命中；
+`acceptance.py` 全绿。
+
+---
+
 ## v0.1.0-beta.12 — 2026-10-30（DEFAULTS 对齐 + 验收脚本）
 
 ### 1. `paths.DEFAULTS` 与交付口径对齐

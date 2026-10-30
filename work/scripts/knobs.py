@@ -9,6 +9,11 @@
 
 现在四处都从这里取，改默认值只改这一处。
 
+**入口顺序（2026-10-30 收敛）**：`pipeline.json` 的 `seg_flush_chars` / `chunk`
+→ `Ctx` 注入 `KIKOERU_*` 环境变量 → 本模块读取。
+也就是说**正常跑管线时改 `pipeline.json` 就够了**；环境变量仍可临时覆盖（做 A/B 用），
+本文件的默认值只在「不经过管线、直接跑脚本」时生效。
+
 ⚠️ 本文件必须**零副作用、零第三方依赖**：`pipeline_lib` 会用
 `spec_from_file_location` 直接加载它（不 import scripts 包、不动 sys.path）。
 """

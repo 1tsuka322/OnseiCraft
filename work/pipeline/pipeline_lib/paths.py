@@ -102,6 +102,12 @@ DEFAULTS = {
     # 交付的 16 部是 cue 模式做的（spacer 只在 is_cue 分支产生，成品有 304 个 spacer）。
     # 0=显示行 / 1=语义 cue —— 默认必须与交付口径一致，否则行数/清屏行全对不上。
     "cue_pipeline": 1,
+    # 两个切分旋钮（2026-10-30 上提到 cfg）。以前只走环境变量 + scripts/knobs.py，
+    # 结果是「配置里没有、代码里各写一份默认值」，改一处其余几处就撒谎。
+    # 现在：cfg 是唯一入口 → Ctx 注入环境变量 → 脚本从 knobs 读；
+    # 指纹把 cfg 的这两个值记进 params/config，改了就必然失效。
+    "seg_flush_chars": 10,      # ASR 段边界处 cue 字数 ≥ 此值才切（越小切得越细）
+    "chunk": 3,                 # 每块多少行一起送翻译（越小越不易跨行重排）
     "spk_prefix": False,
     "track_memory": False,
     "diarize": False,
