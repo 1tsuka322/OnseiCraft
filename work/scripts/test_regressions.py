@@ -1231,6 +1231,21 @@ SPLIT_SENT_CASES = [
     ("就这样射出来，像往常一样正义", 2, "就这样射出来，"),
 ]
 
+# prompt 回吐（2026-10-30）：带【前文】问短句时 Sakura 会续写 prompt。
+# 回吐物是**合法中文**，`_residue`/`_loop4`/`_nonlexical` 全都放行 → 必须单列一条。
+ECHO_CASES = [
+    ("日：用沾满爱液黏糊糊的手掌使劲揉搓", True),
+    ("【待翻译】共 1 句：1|住手住手住手", True),
+    ("【前文】（已译好的前一句）", True),
+    ("1|住手住手住手", True),
+    ("2|摩擦到爱液喷出来为止", True),
+    # 正常译文不许误伤（含「日」字、「译」字的普通句子）
+    ("日本那边今天天气不错", False),
+    ("翻译得挺好的", False),
+    ("用沾满爱液黏糊糊的手掌使劲揉搓", False),
+    ("住手住手住手", False),
+]
+
 
 def check_sakura_guard(verbose):
     """`translate._sakura_bad` 的判定护栏。"""
@@ -1285,6 +1300,21 @@ def check_emit_and_split(verbose):
             bad.append(("split", "%r 期望首行 %r，实际 %r" % (zh[:16], want, parts)))
         elif verbose:
             print("   ✅ 切点 %r -> %r" % (zh[:16], parts))
+
+    # ③ prompt 回吐护栏（2026-10-30）：回吐物是合法中文，字符统计类规则全放行，
+    #    必须单列。实测来源：带【前文】问短句时 Sakura 会续写 prompt。
+    for zh, want in ECHO_CASES:
+        got = T._is_prompt_echo(zh)
+        if got != want:
+            bad.append(("echo", "%r 期望 echo=%s 实际 %s" % (zh[:18], want, got)))
+        elif verbose:
+            print("   ✅ 回吐判定 %r -> %s" % (zh[:18], got))
+    # 回吐必须被 _sakura_bad 判脏（否则会落盘）
+    for zh in ("日：用沾满爱液黏糊糊的手掌使劲揉搓", "【待翻译】共 1 句：1|住手住手住手", "1|住手住手住手"):
+        if not T._sakura_bad(zh, "やめろやめろやめろ")[0]:
+            bad.append(("echo", "_sakura_bad 放行了回吐：%r" % zh[:20]))
+    if verbose:
+        print("   ✅ 回吐被 _sakura_bad 判脏（不会落盘）")
     return bad
 
 
@@ -1529,9 +1559,9 @@ def main():
     print("   %d/%d 通过 %s" % (_n3p - len(bad3p), _n3p,
                               "✅" if not bad3p else "❌ " + str(bad3p)))
 
-    print("\n=== 3q. 空译文不丢行 + 切点句号优先（2026-10-30）===")
+    print("\n=== 3q. 空译文不丢行 + 切点句号优先 + 回吐护栏（2026-10-30）===")
     bad3q = check_emit_and_split(verbose)
-    _n3q = 2 + len(SPLIT_SENT_CASES)
+    _n3q = 2 + len(SPLIT_SENT_CASES) + len(ECHO_CASES) + 1   # +1 = 回吐必须被判脏
     print("   %d/%d 通过 %s" % (_n3q - len(bad3q), _n3q,
                               "✅" if not bad3q else "❌ " + str(bad3q)))
 

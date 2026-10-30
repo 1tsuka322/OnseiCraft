@@ -592,8 +592,29 @@ def _symloop(zh):
     return bool(re.search(r"([～~—–…・])\1{9,}", zh or ""))
 
 
+ECHO_MARKS = ("【待翻译】", "【前文】", "【输出】", "编号|译文", "日：", "译：")
+
+
+def _is_prompt_echo(zh):
+    """模型把 prompt 结构吐回来（而不是给译文）。
+
+    2026-10-30 实测：`やめろやめろやめろ` 在「带前文」的问法下，Sakura 会续写 prompt——
+    原始返回 `日：用沾满爱液黏糊糊的手掌使劲揉搓` 或 `1001000100100100…`。
+    `parse_reply` 抽不到 `编号|译文` 时会返回 None（安全），但**裸单行路径**取 `rows[0]`，
+    回吐物是合法中文，`_residue`/`_loop4`/`_nonlexical` 全都放行 → 会直接落盘。
+    所以这里单列一条，所有判定入口共用。
+    """
+    s = zh or ""
+    if any(m in s for m in ECHO_MARKS):
+        return True
+    # `1|住手` / `2|…` 这种残留编号（块协议的编号没被剥掉）
+    return bool(re.match(r"^\s*\d+\s*[|｜]\s*\S", s))
+
+
 def _sakura_bad(zh, ja):
     """返回 (原因, 是否非词汇音)。原因空 = 干净。"""
+    if _is_prompt_echo(zh):
+        return "echo", False
     # 逐字母退化：`K，O，S，h，h，a，n，d…`（Sakura 遇到罗马音垃圾时会把字母一个个吐出来）。
     # ⚠️ 这种单字母不成 `[A-Za-z]{3,}`，_residue 抓不到，必须单独判。
     if re.search(r"(?:[A-Za-z]，){4,}", zh or ""):
@@ -666,6 +687,57 @@ def _sakura_retry_one(ja):
     return cand, (not why)
 
 
+def _sakura_retry_one_ctx(ja, prev_ja, prev_zh):
+    """**二级重试**：单行 + 【前文】，沿用块翻译的 prompt 形状。返回 (译文, 是否干净)。
+
+    为什么需要它（2026-10-30 实测，`tmp/daily/exp_ctx_retry.py`）：
+      · 对**已失败行**（成品是「…」的 12 条）：裸单行救回 3/12，带前文救回 **6/12**。
+      · 对**健康行**（13 条）：裸单行 22/26，带前文只剩 10/26 —— 前文会诱发 prompt 回吐，
+        集中在「重复句」（`やめろ×3`/`行く×3`/`えへへ…`）。
+    所以**它只能当第二级重试**，绝不能进主路径。回吐由 `_is_prompt_echo` 拦下，
+    抽不到 `编号|译文` 就返回空（宁可贵「…」，不许把 prompt 写进字幕）。
+    """
+    from polish import strip_think   # 与其它分支一致：polish 是重模块，按需导入
+    HALLU["retried_ctx"] = HALLU.get("retried_ctx", 0) + 1
+    nl = "\n"
+    ctx = ""
+    if prev_ja:
+        ctx = ("【前文】（已译好的前一句，仅供保持语境与口吻连贯，不要重复翻译、不要输出）" + nl
+               + "日：%s" % prev_ja + nl + "译：%s" % (prev_zh or "（略）") + nl + nl)
+    user = (ctx + "【待翻译】共 1 句：" + nl + "1|%s" % ja + nl + nl
+            + "【输出】1 行，格式 编号|译文：")
+    try:
+        reply = call_llm([{"role": "system", "content": SYSTEM},
+                          {"role": "user", "content": user}],
+                         temperature=0.0, top_p=SAKURA_TOP_P, max_tokens=200)
+    except Exception:
+        return "", False
+    res = parse_reply(reply, 1)
+    if not res:
+        return "", False
+    cand = res[0]
+    why, _nl = _sakura_bad(cand, ja)
+    return cand, (not why)
+
+
+def _rescue_line(ja, prev_ja="", prev_zh=""):
+    """两级重试阶梯（P2，2026-10-30）。返回 (译文, 是否救回, 层级)。
+
+    L1 裸单行（无上下文）——只救「被同块干扰」的行，最安全；
+    L2 单行 + 【前文】——救省略/指代不明的短句（实测把 3/12 提到 6/12）；
+    都不行 → ("", False, 0)，调用方落「…」并点名。
+    """
+    cand, ok = _sakura_retry_one(ja)
+    if ok:
+        return cand, True, 1
+    if prev_ja or prev_zh:
+        cand2, ok2 = _sakura_retry_one_ctx(ja, prev_ja, prev_zh)
+        if ok2:
+            HALLU["saved_l2"] = HALLU.get("saved_l2", 0) + 1
+            return cand2, True, 2
+    return "", False, 0
+
+
 def _split_short(block):
     """把「很短的句子」从块里拆出来，各自单独成块。
 
@@ -691,8 +763,23 @@ def _split_short(block):
     return out
 
 
+def _last_ctx(prev_ctx):
+    """从 `prev_ctx`（["日：…\\n译：…", …]）取最近一句的 (日, 译)，给二级重试用。"""
+    if not prev_ctx:
+        return "", ""
+    s = prev_ctx[-1] or ""
+    ja = zh = ""
+    for line in s.split("\n"):
+        if line.startswith("日："):
+            ja = line[2:].strip()
+        elif line.startswith("译："):
+            zh = line[2:].strip()
+    return ja, zh
+
+
 def translate_block(block, prev_ctx):
     """prev_ctx: 前几句的「日：… 译：…」，用来保持人称/称呼/口吻连贯。"""
+    _pja, _pzh = _last_ctx(prev_ctx)      # 二级重试（L2）用的前文
     # 短行隔离（见 _split_short）：只在混排时才拆，全短或全长都不动
     if len(block) > 1 and ENGINE == "sakura":
         parts = _split_short(block)
@@ -766,7 +853,7 @@ def translate_block(block, prev_ctx):
                             HALLU["masked"] += 1
                             out.append(SAKURA_FALLBACK)
                             continue
-                        cand, ok = _sakura_retry_one(cja)
+                        cand, ok, _lvl = _rescue_line(cja, _pja, _pzh)
                         if ok:
                             out.append(cand)
                         else:
@@ -785,9 +872,12 @@ def translate_block(block, prev_ctx):
                         HALLU["masked"] += 1
                         out.append(SAKURA_FALLBACK)
                         continue
-                    cand, ok = _sakura_retry_one(ja)
+                    cand, ok, lvl = _rescue_line(ja, _pja, _pzh)
                     if ok:
                         out.append(cand)
+                        if lvl == 2:
+                            print("    ↑ L2 带前文救回：%s -> %s" % (ja[:20], cand[:26]),
+                                  flush=True)
                     else:
                         HALLU["left"] += 1
                         print("    ⚠️ Sakura 幻觉(%s)未救回：%s -> %s"
@@ -899,15 +989,29 @@ def main():
                 results[i] = r[0] if r else ""
             except Exception:
                 results[i] = ""
+        # 仍然空的行走两级重试阶梯（P2）。上面那步已经带前文问过一轮，
+        # 所以这里先试裸单行（可能只是被块干扰），不行再带前文重来一次。
+        still = [i for i, v in enumerate(results) if not v]
+        for i in still:
+            pja, pzh = _last_ctx(prev_ctx(i))
+            cand, ok, lvl = _rescue_line(lines[i]["text"], pja, pzh)
+            if ok:
+                results[i] = cand
+                print("    ↑ 空行由 L%d 救回：%s -> %s"
+                      % (lvl, lines[i]["text"][:20], cand[:26]), flush=True)
+        if still:
+            print("    空行 %d 个，重试后仍空 %d 个"
+                  % (len(still), sum(1 for i in still if not results[i])), flush=True)
         print("    翻译完成 %.1f 秒（逐句重试 %d）" % (time.time() - t0, len(bad)), flush=True)
         if RESIDUE["retried"]:
             print("    残留重抽 %d 次；仍残留 英文 %d / 假名 %d"
                   % (RESIDUE["retried"], RESIDUE["latin"], RESIDUE["kana"]), flush=True)
         if any(HALLU.values()):
             print("    Sakura 幻觉兜底：拉丁 %d / 复读 %d / 注水 %d → 拟声段直接给「…」%d，"
-                  "重问救回 %d，未救回 %d"
+                  "重问救回 %d（其中 L2 带前文 %d），未救回 %d"
                   % (HALLU["latin"], HALLU["loop"], HALLU["ratio"],
-                     HALLU["masked"], HALLU["retried"] - HALLU["left"], HALLU["left"]),
+                     HALLU["masked"], HALLU["retried"] - HALLU["left"],
+                     HALLU.get("saved_l2", 0), HALLU["left"]),
                   flush=True)
 
         out = os.path.join(a.out_dir, src + ".lrc")
