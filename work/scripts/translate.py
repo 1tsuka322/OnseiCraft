@@ -11,6 +11,8 @@ r"""
 产出：<初译输出目录>\<音频文件名>.lrc（后面交给 polish.py 润色）
 """
 import os
+
+import knobs
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 import json
@@ -22,7 +24,9 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 API = "http://127.0.0.1:8080/v1/chat/completions"
-MODEL_TAG = "faster-whisper large-v3 + Qwen2.5-7B-Instruct"
+# ⚠️ 标签必须跟着实际引擎走：以前写死 Qwen2.5-7B-Instruct，跑 Sakura 时草稿头是假的
+# （R153 就是靠这个标签发现「声明 hymt 实际跑 Qwen」，标签本身不能撒谎）。
+MODEL_TAG = "faster-whisper large-v3 + %s" % knobs.engine_tag()
 
 # ---------- 翻译引擎 ----------
 # KIKOERU_ENGINE=sakura 切到 SakuraLLM（专为日中翻译训练的 ACGN 微调）。
@@ -134,7 +138,7 @@ def _hymt_hint(text):
 # **A/B 实锤（RJ256650 05 轨 656.46/660.10）**：CHUNK=10 两行对调；
 # CHUNK=3 变成「我要用湿答答的手掌」/「摩擦到盐巴积到喷出来为止」，各归各位。
 # 所以默认改成 3。代价：调用次数变多（RJ256650 6 轨 2 分 25 秒，可接受）。
-CHUNK = int(os.environ.get("KIKOERU_CHUNK", "3"))
+CHUNK = knobs.CHUNK                       # 单一真相在 knobs.py（默认 3）
 WORKERS = 3
 CTX_KEEP = 3
 
@@ -401,7 +405,7 @@ def _residue(s):
 #   · 日文侧有实词 → 单行重问一次（温度降到 0），还坏就兜底 + 记 review。
 SAKURA_MAX_RATIO = 2.5     # 译文字符数 / 日文字符数 的上限
 SAKURA_LOOP = 4            # 同一 3 字片段连续出现次数上限
-SAKURA_FALLBACK = "…"
+SAKURA_FALLBACK = knobs.FALLBACK          # 单一真相在 knobs.py
 # 短行阈值：日文去掉标点后 < 这么多字，就单独成块翻（防下一行开头渗进来）
 SHORT_JA = 8
 HALLU = {"latin": 0, "loop": 0, "ratio": 0, "masked": 0, "retried": 0, "left": 0}

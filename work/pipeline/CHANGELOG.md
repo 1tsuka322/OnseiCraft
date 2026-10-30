@@ -6,6 +6,58 @@
 
 ---
 
+## v0.1.0-beta.11 — 2026-10-30（指纹补全 + 旋钮单一真相）
+
+主题：**「声明 ≠ 实际」第五例——阶段指纹看不见自己真正的依赖**。
+链路验证脚本 `tmp/daily/pipeline_verify.py` 量出来的，不是看代码猜的。
+
+### 1. 03 的指纹有 4 个盲区（改了代码不会重算）
+
+| 盲区 | 事实 | 后果 |
+|---|---|---|
+| `cues.py` 不在 03 的 `code` 里 | 03 只登记了 `translate.py` / `serve.py`，而 `translate.py:277` **在函数体内** `from polish import build_lines`、`:274` `import cues` | 改 cue 切分（本轮核心改动）**不会**让 03 失效，普通 `run` 会报「缓存命中」 |
+| `KIKOERU_SEG_FLUSH_CHARS` / `KIKOERU_CHUNK` 不在 `env_whitelist` | 脚本从 `os.environ` 直读，白名单是硬编码的 | 改门槛/块大小同样不触发 |
+| sakura gguf 不在 `MODELS_BY_STAGE["03"]` | 只登记 hymt / qwen×2，而默认引擎是 sakura；`server_model` 只记录、不进哈希 | 换模型文件不触发 |
+| 04 也读 `SEG_FLUSH_CHARS` | `polish.py` 的 `cues.build_units()` 同样走 `build_semantic_cues` | 只靠 03 的输入间接失效，显式登记更稳 |
+
+修法：03/04/05/06 的 `code` 改成**「本阶段脚本 + import 闭包」**（03 从 3 项变 14 项）；
+`env_whitelist(cfg, stage)` 对 03/04 补两个旋钮；`MODELS_BY_STAGE["03"]` 加 `gguf_sakura`。
+
+### 2. `selftest` 新增 S7（防复发）
+
+扫每个阶段 `code` 里脚本的 import（**含函数内**，正则走全文件），
+凡是同目录 `scripts/*.py` 就必须登记进 `code`，否则失败。
+`test_*.py` 豁免（测试脚本 import 的是「被测对象」，不是产物依赖）。
+这一条当场抓出 19 处漏登记（`01_asr→asr_halluc` / `polish→lock_match,styleloc` /
+`term_lock→scan_violations` …），全库 `selftest` 13 → **19 项**。
+
+### 3. `scripts/knobs.py`：旋钮默认值的单一真相
+
+`SEG_FLUSH_CHARS` / `CHUNK` / 空译文占位 / 引擎显示名以前各写一份
+（`cues.py`、`translate.py`、`stages.py`、`fingerprint.py` 四处），
+改一处其余三处就开始撒谎。现在统一从 `knobs.py` 取，
+`pipeline_lib` 用 `spec_from_file_location` 加载（不动 `sys.path`）。
+
+### 4. LRC `[by:]` 标签跟随实际引擎
+
+`translate.py` 的 `MODEL_TAG` 写死 `Qwen2.5-7B-Instruct`，跑 Sakura 时草稿头是假的
+（R153 正是靠这个标签发现「声明 hymt 实际跑 Qwen」，标签本身不能撒谎）。
+现在与 `polish.py` 共用 `knobs.engine_tag()`；已把 147 个 03 草稿的 `[by:]` 同步成真值。
+**04 的标签字符串未变**，成品逐字节不受影响。
+
+### 5. `tmp/daily/restamp.py`：带证据的重打指纹
+
+改 `pipeline_lib` 会让 `runner` 哈希变 → 6 个阶段全失效，包括一行没改的 01 ASR。
+该工具先验「`code` 闭包里每个脚本的 mtime ≤ 该阶段 `ended_at`」，
+通过才写回 manifest，并把理由与证据记进 `restamped` 字段；
+证据不足要 `--force --why`（显式留痕）。本轮用它处理 17 部 × 6 阶段。
+
+**验收**：17 部 × 6 阶段指纹与当前代码**全部一致**（102/102）；
+04 重跑产物**逐字节一致**；`check.py` 17/17、语义覆盖 0 违规 / 0 loss、
+`selftest` 19/19、`test_regressions` 全过、`errata_audit --test` 44/44。
+
+---
+
 ## v0.1.0-beta.10 — 2026-10-28（复核看后文 + 语义覆盖门禁）
 
 ### 2026-10-30 · 修：cue 段边界门槛 16 → 10（「拟声+实词」混在一条 cue）

@@ -11,9 +11,11 @@
   S4 promote 拒绝「生产里有本 run 未产出的 LRC」（防新旧混用）
   S5 锁：释放只删自己的 token；PID 存活时即使锁很旧也不抢
   S6 05_term_lock 必须是独立目录（04 的产物不可变）
+  S7 阶段 `code` 列表必须覆盖脚本实际 import 的同目录模块（防「改了不重算」）
 """
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -168,6 +170,50 @@ def main():
        os.path.abspath(ctx.lock_dir()))
     ck("S6b 04 与 05 是不同目录", os.path.abspath(ctx.out_dir()) !=
        os.path.abspath(ctx.lock_dir()))
+
+    print("\n=== S7 阶段 code 列表覆盖实际 import ===")
+    # 为什么需要这条：03 的 code 只写了 translate.py/serve.py，而 translate.py 在
+    # **函数体内** `import cues`（:274）——改 cue 切分不会让 03 失效，普通 run 会
+    # 误判「缓存命中」（R156 的四个盲区之一，人肉审计才发现）。
+    # 这里扫全文件的 import（含函数内），凡是同目录 scripts/*.py 就必须登记进 code。
+    _scripts = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "scripts")
+    _siblings = set()
+    if os.path.isdir(_scripts):
+        _siblings = {fn[:-3] for fn in os.listdir(_scripts) if fn.endswith(".py")}
+    _imp = re.compile(r"^\s*(?:import|from)\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
+    for _st, _def in stages.STAGES.items():
+        _code = _def.get("code") or []
+        if not _code:
+            continue
+        _declared = {c[:-3] if c.endswith(".py") else c for c in _code}
+        _miss = set()
+        # 不动点迭代：补进来的模块自己也有 import（`translate.py→polish.py→cues.py`），
+        # 只查一层会漏。闭包收敛很快（本目录最大深度 3）。
+        _queue = [c for c in _code if not os.path.basename(c).startswith("test_")]
+        _seen = set()
+        while _queue:
+            _fn = _queue.pop()
+            _key = _fn if _fn.endswith(".py") else _fn + ".py"
+            if _key in _seen:
+                continue
+            _seen.add(_key)
+            _p = os.path.join(_scripts, _key)
+            if not os.path.exists(_p):
+                _miss.add("(缺文件)%s" % _fn)
+                continue
+            try:
+                _src = open(_p, encoding="utf-8").read()
+            except OSError:
+                continue
+            for _m in _imp.finditer(_src):
+                _mod = _m.group(1)
+                if _mod not in _siblings:
+                    continue
+                if _mod not in _declared:
+                    _miss.add("%s→%s.py" % (_key, _mod))
+                _queue.append(_mod + ".py")
+        ck("S7 %s 的 code 覆盖 import" % _st, not _miss, "漏登记：%s" % sorted(_miss))
 
     # 还原
     for k, v in saved.items():

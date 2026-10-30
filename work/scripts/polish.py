@@ -13,6 +13,8 @@ r"""
   parallel.json / style_guide.txt / hard_rules.txt / stats.json
 """
 import os
+
+import knobs
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 import json
@@ -165,8 +167,7 @@ def cue_sig(src, ln, old, system, mem=""):
     return h.hexdigest()[:20]
 # 写进 lrc 的 [by:] 元信息，要如实反映实际用的翻译引擎。
 # 配合 KIKOERU_ENGINE 环境变量（与 translate.py 同一套），跑 Sakura 时两条命令都要带上它。
-_ENGINE_NAME = {"sakura": "Sakura-7B-Qwen2.5-v1.0", "qwen3": "Qwen3-8B"}.get(
-    os.environ.get("KIKOERU_ENGINE", "qwen"), "Qwen2.5-7B")
+_ENGINE_NAME = knobs.engine_tag()   # 表在 knobs.py，与 translate.py 共用
 MODEL_TAG = "faster-whisper large-v3 + %s (人工风格对齐)" % _ENGINE_NAME
 # 风格库位置统一由 styleloc 解析：环境变量 → data/style → presets（公开预设）
 import styleloc  # noqa: E402

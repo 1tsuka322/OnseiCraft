@@ -25,7 +25,7 @@ work/
 │   │   ├── knowledge.py     知识表版本化与提案审批（propose/validate/approve）
 │   │   ├── queue.py         GPU 串行锁（data/tmp/pipeline_queue/gpu.lock）
 │   │   ├── paths.py         ★ 路径唯一出口（三层结构的换算点）
-│   │   └── selftest.py      13 项自检（不需要任何数据）
+│   │   └── selftest.py      19 项自检（不需要任何数据；S7 扫阶段 code 的 import 闭包）
 │   ├── tools/dashboard.py   只读看板（manifest → runs/dashboard.html）
 │   ├── pipeline.json        配置（引擎/槽数/cue 口径/门禁清单）
 │   ├── VERSION / CHANGELOG.md
@@ -34,12 +34,13 @@ work/
 ├── scripts/                 ★ 阶段脚本（被 pipeline 调用，也可单独跑）
 │   ├── asr.py               01 语音识别（faster-whisper large-v3）
 │   ├── asr_fix_scan.py      02 确定性改错（errata / 表记白名单）
-│   ├── translate.py         03 初译（HY-MT，纯翻译模型）
-│   ├── polish.py            04 润色（Qwen + 句级锁 + 拟声遮蔽 + 后文复核）
+│   ├── translate.py         03 初译（默认 Sakura；HY-MT / Qwen 仅回退路线）
+│   ├── polish.py            04 后处理（默认 cleanup-only：标点/格式归一 + E1 锁，不过 LLM）
 │   ├── term_lock.py         05 术语锁（允许集校验 + 确定性覆写）
 │   ├── check.py / empty_check.py / scan_violations.py / semantic_coverage.py
 │   │                        06 门禁
-│   ├── asr_latin_halluc.py  01 层末尾：清 Whisper 在非语音段吐的拉丁幻觉
+│   ├── asr_halluc.py        01 层末尾：清 Whisper 在非语音段吐的拉丁幻觉
+│   ├── knobs.py             ★ 旋钮默认值的单一真相（SEG_FLUSH_CHARS / CHUNK / 引擎标签）
 │   ├── asr_words.py         ★ text 改了必须同步 words（cue 管线读 words 不读 text）
 │   ├── export_review.py     逐行审校表（给外部模型判；用 --format txt）
 │   ├── fill_timeline.py     补「整行消失」的时间轴占位（cue 内漏译的兜底）

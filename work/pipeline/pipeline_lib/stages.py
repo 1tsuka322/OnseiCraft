@@ -566,7 +566,7 @@ STAGES = {
     "01_asr": {
         "desc": "ASR（+台本打轴/声纹）", "gpu": True,
         "knowledge": [],
-        "code": ["asr.py", "script_align.py"],
+        "code": ["asr.py", "script_align.py", "asr_halluc.py"],
         "run": stage_asr,
         "params": lambda ctx: {"ext": ctx.cfg.get("ext", "auto"),
                                "device": ctx.cfg.get("device"),
@@ -579,7 +579,7 @@ STAGES = {
     "02_asr_fix": {
         "desc": "确定性 ASR 改错（errata / 绿灯）", "gpu": False,
         "knowledge": ["asr_errata.json", "do_not_change.json"],
-        "code": ["asr_fix_scan.py"],
+        "code": ["asr_fix_scan.py", "asr_words.py", "styleloc.py"],
         "run": stage_asr_fix,
         "params": lambda ctx: {"green": bool(ctx.cfg.get("asr_other_dir"))},
         "inputs": lambda ctx: [manifest.dir_rec(ctx.asr_dir(), "*.json")],
@@ -587,11 +587,23 @@ STAGES = {
     "03_translate": {
         "desc": lambda ctx: "初译（%s）" % _engine_label(ctx.cfg.get("engine", "hymt")), "gpu": True,
         "knowledge": ["glossary.json", "pin_sets.json", "user_rules.txt", "terms_db.json"],
-        "code": ["translate.py", "serve.py"],
+        # 由 selftest S7 维护：必须是「本阶段脚本 + import 闭包」。
+        # 漏登记 = 改了代码但指纹不变（R156 的 03 盲区，就是靠 S7 才扫出来的）。
+        "code": ["knobs.py", "translate.py", "serve.py", "cues.py", "asr_words.py", "polish.py",
+                 "pragmatics_hints.py", "asr_halluc.py", "entity_ledger.py", "lock_match.py",
+                 "mask_nonlexical.py", "rootloc.py", "scan_violations.py", "styleloc.py",
+                 "term_lock.py"],
         "run": stage_translate,
+        # ⚠️ `seg_flush_chars` / `chunk` 目前是脚本从 env 直读（不进 cfg），
+        # 这里登记的是**实际生效值**（取自 scripts/knobs.py 这个单一真相），
+        # 保证改了门槛/块大小会让 03 失效。
+        # 正规做法是把它们上提到 cfg（要同时改 paths.DEFAULTS / pipeline.json /
+        # 阶段 params / Ctx 的 env 注入四处），留 TODO。
         "params": lambda ctx: {"engine": ctx.cfg.get("engine", "hymt"),
                                "cue_pipeline": int(ctx.cfg.get("cue_pipeline", 1)),
-                               "slots": ctx.cfg.get("slots")},
+                               "slots": ctx.cfg.get("slots"),
+                               "seg_flush_chars": FP._knobs().SEG_FLUSH_CHARS,
+                               "chunk": FP._knobs().CHUNK},
         "inputs": lambda ctx: [manifest.dir_rec(effective_asr(ctx), "*.json")],
     },
     "04_polish": {
@@ -603,8 +615,11 @@ STAGES = {
         "knowledge": ["glossary.json", "hard_rules.txt", "user_rules.txt",
                       "parallel.json", "pin_sets.json"],
         "code": ["polish.py", "serve.py", "cues.py", "mask_nonlexical.py",
-                 "postprocess.py", "pragmatics_hints.py", "entity_ledger.py",
-                 "term_repair.py", "term_lock.py"],
+                 "knobs.py", "postprocess.py", "pragmatics_hints.py", "entity_ledger.py",
+                 "term_repair.py", "term_lock.py",
+                 # 以下由 selftest S7 扫出来的真实 import（2026-10-30 补）
+                 "asr_words.py", "asr_halluc.py", "lock_match.py",
+                 "scan_violations.py", "styleloc.py", "rootloc.py"],
         "run": stage_polish,
         "params": lambda ctx: {"slots": ctx.cfg.get("slots"),
                                "polish_engine": ctx.cfg.get("polish_engine", "q5"),
@@ -621,7 +636,11 @@ STAGES = {
         "desc": "术语锁落地（确定性覆写）", "gpu": False,
         "knowledge": ["pin_sets.json", "glossary.json", "do_not_change.json",
                       "terms_db.json"],
-        "code": ["term_lock.py"],
+        # 由 selftest S7 维护：必须是「本阶段脚本 + import 闭包」。
+        # 漏登记 = 改了代码但指纹不变（R156 的 03 盲区，就是靠 S7 才扫出来的）。
+        "code": ["knobs.py", "knobs.py", "term_lock.py", "scan_violations.py", "styleloc.py", "asr_halluc.py",
+                 "asr_words.py", "cues.py", "entity_ledger.py", "lock_match.py",
+                 "mask_nonlexical.py", "polish.py", "pragmatics_hints.py", "rootloc.py"],
         "run": stage_term_lock,
         "params": lambda ctx: {"only": ctx.cfg.get("term_only", "")},
         "inputs": lambda ctx: [manifest.dir_rec(ctx.out_dir(), "*.lrc")],
@@ -629,8 +648,13 @@ STAGES = {
     "06_checks": {
         "desc": "门禁（check / scan / errata / 回归 / 覆盖层 / 语义覆盖）", "gpu": False,
         "knowledge": ["asr_errata.json", "glossary.json", "stats.json", "coverage.json"],
-        "code": ["check.py", "empty_check.py", "scan_violations.py", "errata_audit.py",
-                 "test_regressions.py", "repair_overlay.py", "semantic_coverage.py"],
+        # 由 selftest S7 维护：必须是「本阶段脚本 + import 闭包」。
+        # 漏登记 = 改了代码但指纹不变（R156 的 03 盲区，就是靠 S7 才扫出来的）。
+        "code": ["knobs.py", "check.py", "empty_check.py", "scan_violations.py", "errata_audit.py",
+                 "test_regressions.py", "repair_overlay.py", "semantic_coverage.py",
+                 "styleloc.py", "rootloc.py", "asr_halluc.py", "asr_words.py", "cues.py",
+                 "polish.py", "pragmatics_hints.py", "translate.py", "entity_ledger.py",
+                 "lock_match.py", "mask_nonlexical.py", "term_lock.py"],
         "run": stage_checks,
         "params": lambda ctx: {"gates": ctx.cfg.get("_gates")},
         "inputs": lambda ctx: [manifest.dir_rec(final_dir(ctx), "*.lrc")],

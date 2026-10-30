@@ -56,8 +56,8 @@ kikoeru/
 ```
 01_asr       音频 → 日文分段（faster-whisper，词级时间戳）
 02_asr_fix   确定性改错（错字表 / 表记白名单 / 垃圾前缀清理），不调模型
-03_translate 初译（专用翻译模型 HY-MT）
-04_polish    按目标译者风格润色（本地聊天模型 Qwen + 句级锁 + 拟声遮蔽 + 后文复核）
+03_translate 初译（SakuraLLM 7B，专为日中翻译微调；HY-MT / Qwen 是可回退的旧路线）
+04_polish    确定性后处理（默认 cleanup-only：标点/格式归一 + E1 人工锁，**不过 LLM**）
 05_term_lock 术语一致性锁定（确定性覆写，允许集校验）
 06_checks    九项门禁：格式 / 空字幕 / 扫描 / 知识表自检 / 回归 / 覆盖层 / 截断 / 槽位 / 语义覆盖
 ```
@@ -74,7 +74,7 @@ kikoeru/
 git clone <this-repo> && cd kikoeru
 python -m pip install -r work/requirements.txt
 
-# 自检：不需要任何数据，13 项全过就说明环境没问题
+# 自检：不需要任何数据，19 项全过就说明环境没问题
 python work/pipeline/pipeline.py selftest
 
 # 空字幕门禁的自检（4 个用例）

@@ -19,6 +19,8 @@ r"""语义 cue 层 + 中文显示行渲染（GPT 工作框架的阶段 1 / 阶�
 `KIKOERU_CUE_PIPELINE=1` 时启用（默认关，仍走旧的 `build_lines`，可随时回退）。
 """
 import os
+
+import knobs
 import asr_words
 import re
 import math
@@ -54,7 +56,7 @@ SEG_FLUSH_ENABLED = True
 #   10 → cue 23479、跨 ≥3 段 330(1.4%)、中位 13.0 字   ← 采用
 #    8 → cue 24104、跨 ≥3 段 232(1.0%)、中位 12.0 字
 # 取 10 是因为用户报的那条正好 10 字（12 切不开它），代价是中位字数 14→13。
-SEG_FLUSH_CHARS = int(os.environ.get("KIKOERU_SEG_FLUSH_CHARS", "10"))
+SEG_FLUSH_CHARS = knobs.SEG_FLUSH_CHARS   # 单一真相在 knobs.py（默认 10）
 SEG_FLUSH_SEC = None                 # None = 不用时长条件（见上）
 # ⚠️ 试过但**没采用**：把段末「句末助词」（でしょ/か/ね/よ…）也算句子结束。
 # 想法是「用语言信号代替字数兜底」，但实测 12 轨 cue 数 1559、中位日文字 **13**

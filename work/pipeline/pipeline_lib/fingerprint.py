@@ -27,6 +27,9 @@ CONFIG_KEYS = ("engine", "cue_pipeline", "slots", "system_mode", "allow_loss",
 
 # 模型路径常量（抄自 serve.py；不 import 它，避免副作用）
 GGUF = {
+    # 默认引擎（2026-10-29 起 engine=sakura）。以前漏登记 → 换 Sakura 模型文件不会触发 03 重算，
+    # 而 03 的 manifest 里 server_model 只记录、不进哈希（R156 链路验证的盲区之一）。
+    "gguf_sakura": r"D:\fasterwhisperGUI-0.8.5.sfx\models\sakura-7b\sakura-7b-v1.0-iq4xs.gguf",
     "gguf_hymt": r"D:\fasterwhisperGUI-0.8.5.sfx\models\hy-mt1.5-7b\HY-MT1.5-7B-Q4_K_M.gguf",
     "gguf_qwen_q5": (r"D:\fasterwhisperGUI-0.8.5.sfx\models\qwen2.5-7b-instruct-gguf"
                      r"\qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf"),
@@ -41,7 +44,9 @@ WHISPER_NAME = "faster-whisper-large-v3"
 MODELS_BY_STAGE = {
     "01_asr": ["whisper"],
     "02_asr_fix": [],
-    "03_translate": ["gguf_hymt", "gguf_qwen_q5", "gguf_qwen_q4"],
+    # 03 的默认引擎是 sakura，hymt/qwen 只作回退路线；四个都登记，
+    # 因为换任何一个都可能改变输出（回退时 hymt、polish 回退时 q5/q4）。
+    "03_translate": ["gguf_sakura", "gguf_hymt", "gguf_qwen_q5", "gguf_qwen_q4"],
     "04_polish": ["gguf_hymt", "gguf_qwen_q5", "gguf_qwen_q4"],
     "05_term_lock": [],
     "06_checks": [],
@@ -67,9 +72,40 @@ def config_hash(cfg):
     return hashlib.sha256(_canon(resolved_config(cfg)).encode("utf-8")).hexdigest()
 
 
-def env_whitelist(cfg):
-    """业务子进程实际会读到的 KIKOERU_*（与 stages.Ctx.__init__ 的注入一致）。"""
+def _knobs():
+    """读 `scripts/knobs.py`（旋钮的单一真相）。
+
+    用 `spec_from_file_location` 而不是 `import knobs`：不动 sys.path、不 import scripts 包
+    （那里有几十个模块，副作用不可控）。knobs.py 自己保证零依赖零副作用。
+    """
+    if _KNOBS[0] is not None:
+        return _KNOBS[0]
+    import importlib.util
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "scripts", "knobs.py")
+    spec = importlib.util.spec_from_file_location("_kikoeru_knobs", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    _KNOBS[0] = mod
+    return mod
+
+
+def env_whitelist(cfg, stage=None):
+    """业务子进程实际会读到的 KIKOERU_*（与 stages.Ctx.__init__ 的注入一致）。
+
+    ⚠️ `KIKOERU_SEG_FLUSH_CHARS` / `KIKOERU_CHUNK` 是**脚本直接从 os.environ 读**的
+    （`cues.py` / `translate.py` 都从 `knobs.py` 取），不走 cfg，所以以前完全不在指纹里——
+    改 cue 门槛（R156 的核心改动）不会让 03 失效，普通 `run` 会误判「缓存命中」。
+
+    这里只对**真的读它们**的 03/04 补上（04 的 `build_units()` 也走
+    `build_semantic_cues`，虽然它的输入里含 03 的草稿、能间接失效，但显式登记更稳），
+    避免污染 01/02/05/06（否则改门槛会让那些纯确定性阶段也假 cache miss，白跑几十分钟）。
+    值直接取自 knobs，不再抄一份默认值。
+    """
     env = {}
+    if stage in ("03_translate", "04_polish"):
+        env["KIKOERU_SEG_FLUSH_CHARS"] = str(_knobs().SEG_FLUSH_CHARS)
+        env["KIKOERU_CHUNK"] = str(_knobs().CHUNK)
     if cfg.get("engine"):
         env["KIKOERU_ENGINE"] = str(cfg["engine"])
     if cfg.get("cue_pipeline") is not None:
@@ -121,6 +157,7 @@ def _stable_inputs(inputs):
 # 指纹一点不变 → 旧产物照样「缓存命中」→ 改动等于没生效。
 # 这和 R153 是同一类错误：**改了执行层，产物看不出来**。
 _RUNNER = [None]
+_KNOBS = [None]
 
 
 def runner_hash():
@@ -147,7 +184,7 @@ def stage_fingerprint(stage, params, inputs, knowledge, code, cfg, models=None):
         "params": params,
         "config": resolved_config(cfg),
         "config_hash": config_hash(cfg),
-        "env": env_whitelist(cfg),
+        "env": env_whitelist(cfg, stage),
         "inputs": _stable_inputs(inputs),
         "knowledge": knowledge,
         "code": code,
