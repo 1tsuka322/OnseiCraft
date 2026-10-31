@@ -322,6 +322,23 @@ class PipelineRunner(QThread):
                 shutil.copy2(f, os.path.join(dst, os.path.basename(f)))
             self.sig_log.emit("已直接复制 %d 个字幕到 %s（未经门禁保护）" % (len(files), dst))
             return dst
+        except Exception as e:
+            # 六阶段都成功了却卡在 promote —— 这是最让人困惑的一种失败：
+            # 页面上只有一行「没有跑完」，用户不知道字幕其实已经生成好了。
+            # 记进 manifest（事后能查）+ 翻译成人话。
+            hint = _explain_promote(e)
+            try:
+                run.data.setdefault("stages", {})["07_promote"] = {
+                    "name": "07_promote", "status": "failed",
+                    "error": "%s: %s" % (type(e).__name__, e),
+                    "hint": hint, "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                }
+                run.save()
+            except Exception:
+                pass
+            raise RuntimeError("字幕已生成，但放进输出目录失败。\n%s\n\n"
+                               "成品还在 run 目录里：%s\n可以手动复制过去。"
+                               % (hint, src))
         return os.path.join(paths.PROD, rj)
 
     def _learn_rates(self, run, elapsed, job):
@@ -355,6 +372,23 @@ class PipelineRunner(QThread):
             settings.save_app(cfg)
         except Exception:
             pass
+
+
+def _explain_promote(e):
+    """把 promote 的异常翻译成用户能照着做的话。"""
+    s = str(e)
+    low = s.lower()
+    if "mount" in low or "winerror 17" in low or "不同的磁盘" in s:
+        return ("音频/输出目录和程序不在同一个磁盘，Windows 不允许跨盘做某些文件操作。\n"
+                "建议：把软件和音频放在同一个盘（例如都在 D 盘），"
+                "或在「设置 → 字幕输出目录」里改成程序所在的盘。")
+    if "no space" in low or "空间" in s or "disk full" in low:
+        return "磁盘空间不足，清理后重试。"
+    if "access is denied" in low or "拒绝访问" in s or "permission" in low:
+        return "没有写入权限：输出目录可能被占用、只读，或被安全软件拦截。"
+    if "not found" in low or "找不到" in s:
+        return "输出目录不存在且创建失败，检查路径是否合法（不要用 \\\\?\\ 之类前缀）。"
+    return s
 
 
 def _fmt(sec):

@@ -103,8 +103,14 @@ def prepare_source(dropped, project=None, work_root=None):
     copied, failed = 0, []
     for f in files:
         dst = os.path.join(dest, os.path.basename(f))
-        if os.path.exists(dst) and os.path.samefile(dst, f):
-            continue
+        # ⚠️ samefile 在 Windows 上比较「不同磁盘」的两个路径会抛 OSError
+        # （`path is on mount 'D:', start on mount 'C:'`），必须先兜住再比较。
+        if os.path.exists(dst):
+            try:
+                if os.path.samefile(dst, f):
+                    continue
+            except OSError:
+                pass
         if _link_or_copy(f, dst):
             copied += 1
         else:

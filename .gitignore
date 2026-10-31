@@ -74,3 +74,6 @@ work/pipeline/pipeline.local.json
 # Studio 的本机偏好（输出目录、实测倍率），换机器要重新选
 work/app/app.json
 dist/
+
+# 本机安装的 OnseiCraft（1.6GB，不进库）
+onseicraft/
