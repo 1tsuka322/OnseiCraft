@@ -83,6 +83,11 @@ try:
 except Exception:
     _LATIN_OK = {"AV", "JK", "SM", "VIP", "OK", "NG", "BGM", "SE", "CM", "DVD",
                  "ID", "HP", "TV", "OL", "BBA", "NTR", "POV", "ASMR", "LINE"}
+# 2 字母拉丁里**本来就没问题**的：中文句子里夹英文缩写是正常写法。
+# `check.py` 的 LATIN 是 {3,}，管不到这些；这里补一张小表，避免把 EX2/DLsite 报成残留。
+# ⚠️ 只收「出现在专有名词里」的缩写，别把 `DS`/`JQ` 这类漏进来的垃圾也加进来。
+LATIN2_OK = {"EX", "DL", "MC", "JW", "QQ", "Me", "AV", "JK",
+             "SM", "HP", "TV", "ID", "SE", "CM", "NG", "PC", "VR", "CV"}
 
 # 假名 → 罗马字（够用即可：转写判定只比音，不比拼写规范）
 _ROMA = {
@@ -178,11 +183,15 @@ KATA_RUN = re.compile(r"[\u30a0-\u30ff\u30fc]{2,}")
 CONTENT_POS = {"名詞", "動詞", "形容詞", "形状詞", "副詞", "連体詞", "代名詞"}
 
 
-def _is_repetition(s, max_unit=3):
+def _is_repetition(s, max_unit=5):
     """`むむむ` / `ガルガルガル` / `たたたた` —— 同一个短单元反复，是拟声不是实词。
 
     没有这一条，第 2 层（去母音后 ≥3 假名）会把「むむむ」（3 个 む）判成有实词，
     然后「唔唔唔」被判成整行虚化 —— 实测全库这类误报占 content_drop 的三分之一。
+
+    ⚠️ `max_unit` 从 3 提到 5：拟声重复单元常常是 4~5 个假名
+    （`グッチュ`×2、`とっぴゅー`×2、`しっこー`×2），卡在 3 会让它们全部漏过，
+    而 unidic 把任何未知片假名都标成 `名詞` → 一律判成「有实词」。
     """
     n = len(s)
     if n < 2:
@@ -226,16 +235,24 @@ def ja_has_content(ja):
     tg = _fugashi()
     if tg:
         try:
-            seen = False
+            pos1s = []
             for w in tg(ja):
                 f = w.feature
-                seen = True
                 pos1 = getattr(f, "pos1", "") or ""
                 pos2 = getattr(f, "pos2", "") or ""
                 if pos1 in CONTENT_POS and pos2 not in ("非自立", "接尾"):
-                    return True
-            if seen:
-                return False          # fugashi 跑通了且没实词 → 定论
+                    pos1s.append(pos1)
+            if pos1s:
+                # ③ **全假名 + 实词词性只有「名詞」→ 拟声**。unidic 把任何未知片假名都
+                #    标成 `名詞`，所以 `グッチュグッチュ`/`チコチコ`/`しゅっこしゅこ` 全被
+                #    判成「有实词」，译成「咕啾咕啾」「滋啵滋啵」就被误报成脱落。
+                #    ⚠️ 判据是「**只有**名詞」，不是「没有动词形容词」：
+                #    `だーいつきー`（=だーいすきー）会被切成 `副詞 + 名詞`，
+                #    用「没有 hard 词性」会把这条**最经典的实词脱落案例**一起放掉。
+                if set(pos1s) <= {"名詞"}:
+                    return False
+                return True
+            return False              # fugashi 跑通了且没实词 → 定论
         except Exception:
             pass
     rest = _STRIP_KANA.sub("", ja)
@@ -253,6 +270,10 @@ def _jieba():
             import jieba
             import jieba.posseg as pseg
             jieba.setLogLevel(60)
+            # ⚠️ 必须显式 initialize：`jieba.dt.FREQ` 在词典加载前**全是 0**，
+            # 而音译判据第一步就是「这个词在词表里吗」。没初始化 → 每个候选都
+            # 「不成词」→ 全库 2638 条假阳性里有一大半是这个原因。
+            jieba.initialize()
             _JIEBA[0] = (jieba, pseg)
         except Exception:
             _JIEBA[0] = False
@@ -295,6 +316,28 @@ def pinyin_of(s):
         return ""
 
 
+def load_ok_names(path=""):
+    """人工确认的专有名词白名单（一行一个，# 开头是注释）。
+
+    角色名音译是**合法策略**（`レイナ`→「蕾娜」），不是缺陷。这张表只用来
+    压掉审计噪音，**不进 03 的 prompt**（那是 `glossary.json` 的事）。
+    """
+    p = path
+    if not p:
+        try:
+            import styleloc
+            p = os.path.join(styleloc.style_dir(), "translit_ok.txt")
+        except Exception:
+            p = ""
+    out = set()
+    if p and os.path.exists(p):
+        for ln in open(p, encoding="utf-8"):
+            w = ln.split("#", 1)[0].strip()
+            if w:
+                out.add(w)
+    return out
+
+
 # ---------------------------------------------------------------- 检测器
 def _ratio(a, b):
     """**整体**相似度，不是 partial。
@@ -310,13 +353,53 @@ def _ratio(a, b):
         return difflib.SequenceMatcher(None, a, b).ratio()
 
 
-def find_translit(zh, ja, min_ratio=0.75):
+def _cands(zh):
+    """音译候选：**「松散 token」连成的串**里取 2~4 字组合。
+
+    「松散」= 单字，或者多字但不在词表里（`freq<=50`）。
+    多字真词（`妈妈`/`胸部`/`学姐`…）会**打断**串，所以 `妈妈的胸部` 不会
+    被拼出 `妈妈的` 这种跨词片段 —— 那是第一版 326 条里 250 条假阳性的来源
+    （`妈妈` 本来就是 ママ 的正确译法）。
+
+    为什么要拼到 4 字：`嗨波克` 被 jieba 切成 `嗨` + `波克`（后者不在词表），
+    只看相邻两字会漏掉三字音译。
+    """
+    j = _jieba()
+    if not j:
+        return []
+    freq = j[0].dt.FREQ
+    toks = [w for w, _f in zh_tokens(zh) if re.fullmatch(r"[\u4e00-\u9fff]+", w)]
+    out = []
+    for w in toks:
+        if len(w) >= 2 and freq.get(w, 0) <= 50:   # 多字且不成词
+            out.append(w)
+    # 把连续的「松散 token」连成串，再在串里取 2~4 字组合
+    loose = []
+    for w in toks + [""]:
+        if w and (len(w) == 1 or freq.get(w, 0) <= 50):
+            loose.append(w)
+            continue
+        if len(loose) >= 2:
+            s = "".join(loose)[:8]
+            for n in range(2, 5):
+                for i in range(0, len(s) - n + 1):
+                    ab = s[i:i + n]
+                    if freq.get(ab, 0) <= 50:
+                        out.append(ab)
+        loose = []
+    return out
+
+
+def find_translit(zh, ja, min_ratio=0.75, ok=None):
     """中文里有没有「不成词但音近日文片假名」的片段。返回 [(片段, 拼音, 分数)]。
 
     ⚠️ 只对**片假名外来词**做（`KATA_RUN`），不做整行比对。
     第一版拿整行罗马字去 partial_ratio，结果 2638 条里绝大多数是「要是你←yaoshini(0.71)」
     这类假阳性 —— 4~6 个字母的拼音在 20+ 字母的长串里几乎总能找到局部匹配。
     音译只会发生在片假名借词上（`ハイボク`→「嗨波克」），把范围收到片假名串就干净了。
+
+    `ok`：人工确认过的专有名词（`data/style/translit_ok.txt`），命中就跳过 ——
+    角色名音译是**合法策略**，不该反复报警。
     """
     j = _jieba()
     if not j or not zh or not ja:
@@ -324,23 +407,34 @@ def find_translit(zh, ja, min_ratio=0.75):
     runs = [r for r in KATA_RUN.findall(ja) if len(romanize(r)) >= 4]
     if not runs:
         return []
-    freq = j[0].dt.FREQ
-    s = re.sub(r"[^\u4e00-\u9fff]", "", zh)
+    ok = ok or ()
+
+    def _has_ok(c):
+        """候选与白名单「沾边」就跳过 —— 双向都算。
+
+        正向（`w in c`）：`和玛雅`/`是西耶娜` —— 分词把虚词粘到了名字上。
+        反向（`c in w`）：`帕喀梅`⊂`帕喀梅斯`、`米娜`⊂`卢米娜` —— 候选只是
+        名字的一截，报出来等于把同一个名字报两遍。
+        """
+        for w in ok:
+            if c in w or w in c:
+                return True
+        return False
+
+    cands = [c for c in _cands(zh) if not _has_ok(c)]
+    if not cands:
+        return []
     hits = []
     for sub_run in runs:
         roma = romanize(sub_run)
-        for n in (4, 3, 2):
-            for i in range(0, max(0, len(s) - n + 1)):
-                sub = s[i:i + n]
-                if freq.get(sub, 0) > 50:      # 是个真词 → 不是音译
-                    continue
-                py = pinyin_of(sub)
-                if len(py) < 4:
-                    continue
-                r = _ratio(py, roma)
-                if r >= min_ratio:
-                    hits.append((sub, py, round(r, 3)))
-    # 只留最长、最高分的前两条，避免同一处被 2/3/4 字重复报
+        for sub in cands:
+            py = pinyin_of(sub)
+            if len(py) < 4:
+                continue
+            r = _ratio(py, roma)
+            if r >= min_ratio:
+                hits.append((sub, py, round(r, 3)))
+    # 只留最长、最高分的前两条，避免同一处被重复报
     hits.sort(key=lambda x: (-len(x[0]), -x[2]))
     out, seen = [], set()
     for sub, py, r in hits:
@@ -366,6 +460,8 @@ def find_latin2(zh):
         w = m.group(0)
         if w.upper() in _LATIN_OK or w.lower() in _LATIN_OK:
             continue
+        if w in LATIN2_OK:
+            continue
         out.append(w)
     return out
 
@@ -385,7 +481,7 @@ def audit_row(ja, zh, cfg):
     if has and zh_is_all_function(zh):
         return "content_drop", {"ja": ja[:60], "zh": zh[:60],
                                 "tokens": ["%s/%s" % t for t in zh_tokens(zh)][:8]}
-    hit = find_translit(zh, ja, cfg["translit_ratio"])
+    hit = find_translit(zh, ja, cfg["translit_ratio"], cfg.get("ok"))
     if hit:
         return "translit", {"ja": ja[:60], "zh": zh[:60],
                             "hits": ["%s←%s(%.2f)" % h for h in hit]}
@@ -463,12 +559,41 @@ def pair_ja(rows, segs):
 
 
 def audit_track(rows, segs, cfg):
-    jas = pair_ja(rows, segs)
+    """**按 ASR 段聚合**后审计，不是逐显示行。
+
+    ⚠️ 逐行判会把「显示行拆分」全报成实词脱落：一条 cue 的译文被
+    `render_display_lines` 按逗号切成 2 行时，ASR 段的起点落在第 1 行，
+    整段日文就都归给第 1 行，而第 1 行只承载「啊。」—— 看着就像整句丢了。
+    实测 RJ1530549 123.08 的「啊。」，下一行 124.98 就是「我 那个 随时都可以」，
+    整句一个词没丢。第一版 302 条里一大半是这么来的（memory 里
+    「per-row 视图会让他误判」说的就是这个）。
+
+    正确做法：**一个 ASR 段拥有它时间范围内的所有显示行**，把这些行的中文
+    拼起来再判「是不是只剩语气」。
+    """
+    if not rows or not segs:
+        return []
+    segs = sorted(segs, key=lambda z: float(z.get("start") or 0))
+    starts = [float(s.get("start") or 0) for s in segs]
+    owner = [-1] * len(rows)
+    j = -1
+    for i, (t, _zh) in enumerate(rows):
+        while j + 1 < len(segs) and starts[j + 1] <= t + 0.05:
+            j += 1
+        if j >= 0:
+            owner[i] = j
+    groups = {}
+    for i, o in enumerate(owner):
+        if o >= 0:
+            groups.setdefault(o, []).append(i)
     hits = []
-    for (t, zh), ja in zip(rows, jas):
+    for o, idxs in groups.items():
+        ja = segs[o].get("text") or ""
+        zh = "".join(rows[i][1] for i in idxs)
         r = audit_row(ja, zh, cfg)
         if r:
-            hits.append({"t": round(t, 2), "kind": r[0], **r[1]})
+            hits.append({"t": round(rows[idxs[0]][0], 2), "kind": r[0],
+                         "rows": len(idxs), **r[1]})
     return hits
 
 
@@ -484,6 +609,8 @@ def main():
     ap.add_argument("--json", default=os.path.join(rootloc.ROOT, "tmp", "lexical_audit.json"))
     ap.add_argument("--md", default="")
     ap.add_argument("--translit-ratio", type=float, default=0.75)
+    ap.add_argument("--ok-file", default="",
+                    help="专有名词白名单（默认 <style>/translit_ok.txt）")
     ap.add_argument("--no-nonlex-skip", dest="no_nonlex_skip", action="store_true",
                     help="不跳过「纯拟声可直出」的行（A/B 用）")
     ap.add_argument("--quiet", action="store_true")
@@ -493,7 +620,11 @@ def main():
     if a.selftest:
         return selftest()
 
-    cfg = {"translit_ratio": a.translit_ratio, "skip_nonlex": not a.no_nonlex_skip}
+    ok = load_ok_names(a.ok_file)
+    cfg = {"translit_ratio": a.translit_ratio, "skip_nonlex": not a.no_nonlex_skip,
+           "ok": ok}
+    if ok and not a.quiet:
+        print("音译白名单：%d 条（%s）" % (len(ok), a.ok_file))
 
     rjs = a.rj or (sorted(os.path.basename(d) for d in glob.glob(os.path.join(a.lrc, "RJ*"))
                           if os.path.isdir(d)) if a.all or not a.rj else [])
@@ -616,7 +747,7 @@ def selftest():
     ck("「好厉害」无拉丁", not find_latin2("好厉害"))
 
     # ⑥ 端到端：一行虚化 + 一行正常
-    cfg = {"translit_ratio": 0.75, "skip_nonlex": True}
+    cfg = {"translit_ratio": 0.75, "skip_nonlex": True, "ok": set()}
     rows = [(0.0, "哒——！"), (3.0, "好舒服")]
     segs = [{"start": 0.0, "end": 2.0, "text": "だーいすきー"},
             {"start": 3.0, "end": 5.0, "text": "きもちいい"}]
