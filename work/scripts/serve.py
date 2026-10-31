@@ -144,8 +144,17 @@ def start(force=None):
     # 曾经用 -c 10240 -np 3，每槽实际只有 3584 tokens，而润色 prompt 已经涨到
     # 4400+ tokens（硬规则 + 术语表 + 例句 + 16 句待润色），结果 llama-server 直接 400
     # 「exceeds the available context size」。所以按「每槽 ≥ 8192」反推总 -c。
+    # P1（2026-10-31）：**固定采样种子**。以前不传 `--seed`，llama.cpp 每次启动
+    # 用随机种子 → 同一个 prompt 两次跑出来不一样。实测 beta.15 只改重试路径，
+    # 总字数就从 253329 掉到 245598（-3%），纯随机 —— 任何「改了一行代码，质量变好/变差」
+    # 的结论都被这个噪声淹掉。
+    # ⚠️ 只加 seed **不足以**逐字节复现：`-np > 1` 时 llama.cpp 的批处理归约顺序
+    #    不固定，实测 temp=0 同配置跑两遍，20 轨里 18 轨有差异（A/A 噪声底 17%）。
+    #    要完全确定还得 `KIKOERU_SLOTS=1`（已支持，见上）。
+    _seed = os.environ.get("KIKOERU_SEED", "42")
     cmd = [os.path.join(LLAMA_DIR, "llama-server.exe"), "-m", gguf, "-c", str(ctx),
            "-np", str(slots), "-ngl", "99", "-fa", "on", "-t", "8",
+           "--seed", str(_seed),
            "--host", HOST, "--port", str(PORT)]
     if kv_q8:
         cmd += ["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]

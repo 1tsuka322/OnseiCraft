@@ -29,8 +29,14 @@ import math
 # cue 边界
 HARD_PAUSE_SEC = 0.75      # 词间停顿 ≥ 此值 → 硬切
 SOFT_PAUSE_SEC = 0.30      # 候选切点（保护性切分时才用）
-MAX_CUE_SEC = 10.0         # cue 超此长度尝试在候选点切
-MAX_CUE_JA_CHARS = 70      # 日文字符上限
+# P3（2026-10-31）：上限可覆盖，方便 A/B「7.0s / 30 字」的双阈值方案，
+# 不用改代码（默认值 = 现状，所以不影响生产）。
+MAX_CUE_SEC = float(os.environ.get("KIKOERU_CUE_MAX_SEC", "10.0"))
+MAX_CUE_JA_CHARS = int(os.environ.get("KIKOERU_CUE_MAX_CHARS", "70"))
+# P3：**段边界处连读禁切**。whisper 的段边界不等于说话人真的停顿，
+# 实测 72.3% 的段间空隙 >600ms，但也有大量 <200ms 的「连读」被切成两句。
+# 0 = 关闭（默认，现状）；建议 A/B 值 0.20。
+GAP_VETO_SEC = float(os.environ.get("KIKOERU_CUE_GAP_VETO", "0"))
 MIN_CUE_SEC = 1.0          # 句末标点切分的最低 cue 时长
 MIN_CUE_JA_CHARS = 16      # 句末标点切分的最低日文字数
 # ⚠️ 为什么句末标点还要配字数下限：只按「句末标点」切，会把「うん。」「そう。」这类
@@ -317,6 +323,10 @@ def build_semantic_cues(words):
             elif gap >= HARD_PAUSE_SEC:
                 flush("pause")
             elif (SEG_FLUSH_ENABLED and w.get("seg") != cur[-1].get("seg")
+                  # ⚠️ 必须写成「关掉时恒真」：whisper 的词时间戳偶尔**重叠**（gap<0），
+                  # 直接写 `gap >= GAP_VETO_SEC` 在默认 0 时会把负 gap 也挡掉 →
+                  # 段边界切不了 → cue 被缝成巨块。回归用例 0 组当场抓到（giant 0→1）。
+                  and (GAP_VETO_SEC <= 0 or gap >= GAP_VETO_SEC)
                   and (cur[-1]["w"].strip()[-1:] in EOS
                        or nchars() >= SEG_FLUSH_CHARS
                        or (SEG_FLUSH_SEC and cur[-1]["e"] - cur[0]["s"] >= SEG_FLUSH_SEC))):

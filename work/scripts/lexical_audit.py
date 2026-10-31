@@ -165,6 +165,7 @@ def romanize(ja):
 
 # ---------------------------------------------------------------- 日文侧
 _FUGA = [None]
+_ONO = [None]          # 拟声白名单缓存（None=还没加载）
 
 
 def _fugashi():
@@ -222,6 +223,12 @@ def ja_has_content(ja):
         return False
     if KANJI.search(ja):
         return True
+    # ⓪ 拟声白名单（`data/style/ono_ja.txt`）—— 人工确认过的，直接放行
+    ono = _ONO[0]
+    if ono is None:
+        ono = _ONO[0] = load_ono_ja()
+    if ono and _norm_ja(ja) in ono:
+        return False
     # ① 纯重复（`ぎゅぎゅぎゅ`/`くるくるくるくる`/`ねえねえ`/`おうおう`）→ 拟声，不是实词。
     #    fugashi 会把 `ぎゅぎゅぎゅ` 切成名詞，所以这条必须在它**前面**。
     bare = "".join(ch for ch in ja if KANA.match(ch))
@@ -243,13 +250,15 @@ def ja_has_content(ja):
                 if pos1 in CONTENT_POS and pos2 not in ("非自立", "接尾"):
                     pos1s.append(pos1)
             if pos1s:
-                # ③ **全假名 + 实词词性只有「名詞」→ 拟声**。unidic 把任何未知片假名都
-                #    标成 `名詞`，所以 `グッチュグッチュ`/`チコチコ`/`しゅっこしゅこ` 全被
-                #    判成「有实词」，译成「咕啾咕啾」「滋啵滋啵」就被误报成脱落。
-                #    ⚠️ 判据是「**只有**名詞」，不是「没有动词形容词」：
-                #    `だーいつきー`（=だーいすきー）会被切成 `副詞 + 名詞`，
-                #    用「没有 hard 词性」会把这条**最经典的实词脱落案例**一起放掉。
-                if set(pos1s) <= {"名詞"}:
+                # ③ **全假名 + 实词词性「名詞/副詞 只占一种」→ 拟声**。
+                #    unidic 把任何未知片假名都标成 `名詞`（`グッチュグッチュ`/`チコチコ`/
+                #    `しゅっこしゅこ`），把拉长音标成 `副詞`（`むはっ`/`ふっ`），
+                #    所以这两类单独出现时一律是拟声。
+                #    ⚠️ 但**两者同时出现**要当成实词：`だーいつきー`（=だーいすきー）正是
+                #    `副詞(だー) + 名詞(いつき)` —— 这是本项目最经典的实词脱落案例，
+                #    写成「没有动词形容词就放掉」会把它一起放掉（第一版就是这么错的）。
+                soft = {"名詞", "副詞"}
+                if set(pos1s) <= soft and not (soft <= set(pos1s)):
                     return False
                 return True
             return False              # fugashi 跑通了且没实词 → 定论
@@ -314,6 +323,39 @@ def pinyin_of(s):
         return "".join(lazy_pinyin(s))
     except Exception:
         return ""
+
+
+def _norm_ja(s):
+    """日文侧归一：片假名→平假名，只留假名，去掉促音/长音。
+
+    拟声白名单用它比对 —— 这样 `とっぴゅーとっぴゅーと` 和
+    `とっぴゅーとっぴゅー` 会归一成同一个串，不用为标点/长音各写一条。
+    """
+    s = kata2hira(s or "")
+    return "".join(ch for ch in s if KANA.match(ch) and ch not in "っッー")
+
+
+def load_ono_ja(path=""):
+    """拟声白名单（ja 侧）：人工确认「这行就是拟声，译文对」的日文。
+
+    为什么需要：unidic 把 `とくとく`（=解く）标成 `動詞`、把 `くる` 标成 `名詞`，
+    词性判据分不开拟声和实词。规则再堆下去会越来越脆，不如显式列出来 ——
+    以后遇到新的拟声误报，往这个文件加一行即可，不用改代码。
+    """
+    p = path
+    if not p:
+        try:
+            import styleloc
+            p = os.path.join(styleloc.style_dir(), "ono_ja.txt")
+        except Exception:
+            p = ""
+    out = set()
+    if p and os.path.exists(p):
+        for ln in open(p, encoding="utf-8"):
+            w = ln.split("#", 1)[0].strip()
+            if w:
+                out.add(_norm_ja(w))
+    return out
 
 
 def load_ok_names(path=""):
@@ -390,7 +432,7 @@ def _cands(zh):
     return out
 
 
-def find_translit(zh, ja, min_ratio=0.75, ok=None):
+def find_translit(zh, ja, min_ratio=0.78, ok=None):
     """中文里有没有「不成词但音近日文片假名」的片段。返回 [(片段, 拼音, 分数)]。
 
     ⚠️ 只对**片假名外来词**做（`KATA_RUN`），不做整行比对。
@@ -593,7 +635,11 @@ def audit_track(rows, segs, cfg):
         r = audit_row(ja, zh, cfg)
         if r:
             hits.append({"t": round(rows[idxs[0]][0], 2), "kind": r[0],
-                         "rows": len(idxs), **r[1]})
+                         "rows": len(idxs),
+                         # 把参与判定的显示行原样记下来：不然「这 3 行里该改哪一行」
+                         # 只能靠人肉翻 LRC，很容易改错轴（空 spacer 常常是首行）。
+                         "row_list": [[round(rows[i][0], 2), rows[i][1]] for i in idxs],
+                         **r[1]})
     return hits
 
 
@@ -608,11 +654,14 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--json", default=os.path.join(rootloc.ROOT, "tmp", "lexical_audit.json"))
     ap.add_argument("--md", default="")
-    ap.add_argument("--translit-ratio", type=float, default=0.75)
+    ap.add_argument("--translit-ratio", type=float, default=0.78)
     ap.add_argument("--ok-file", default="",
                     help="专有名词白名单（默认 <style>/translit_ok.txt）")
     ap.add_argument("--no-nonlex-skip", dest="no_nonlex_skip", action="store_true",
                     help="不跳过「纯拟声可直出」的行（A/B 用）")
+    ap.add_argument("--max-findings", type=int, default=0,
+                    help="content_drop+translit+latin2 超过这个数就 exit 1（门禁用）。"
+                         "ellipsis_only 不计——那是重试阶梯的正常兜底。")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
@@ -674,6 +723,14 @@ def main():
         write_md(a.md, out_rows, tot)
         if not a.quiet:
             print("报表 → %s" % a.md)
+    bad = tot.get("content_drop", 0) + tot.get("translit", 0) + tot.get("latin2", 0)
+    if bad > a.max_findings:
+        print("\n❌ 词汇层还有 %d 条待核（上限 %d）：实词脱落 %d / 音译 %d / 拉丁 %d"
+              % (bad, a.max_findings, tot.get("content_drop", 0),
+                 tot.get("translit", 0), tot.get("latin2", 0)))
+        print("   处置：真的用 fix_text_exact + lock_from_plan 改；"
+              "拟声/名字往 data/style/ono_ja.txt 或 translit_ok.txt 加一行。")
+        return 1
     return 0
 
 
@@ -747,7 +804,7 @@ def selftest():
     ck("「好厉害」无拉丁", not find_latin2("好厉害"))
 
     # ⑥ 端到端：一行虚化 + 一行正常
-    cfg = {"translit_ratio": 0.75, "skip_nonlex": True, "ok": set()}
+    cfg = {"translit_ratio": 0.78, "skip_nonlex": True, "ok": set()}
     rows = [(0.0, "哒——！"), (3.0, "好舒服")]
     segs = [{"start": 0.0, "end": 2.0, "text": "だーいすきー"},
             {"start": 3.0, "end": 5.0, "text": "きもちいい"}]

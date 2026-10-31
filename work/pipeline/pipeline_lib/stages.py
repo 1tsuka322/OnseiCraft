@@ -485,16 +485,21 @@ GATE_DEFS = {
     # 词汇层审计（P2，2026-10-31）：找「看起来是译文、其实是垃圾」的行。
     # check/empty/trunc/semantic 四道全放过的一类缺陷：整行只剩语气（`だーいすきー`→「哒——！」）、
     # 音译（`ハイボク`→「嗨波克」）、2 字母拉丁残留（`DS`）。
-    # ⚠️ 现在是**参考项**，只出审校报表不改：实测精度约 54%（302 条里约 160 条是真的），
-    #    误报主要是「拟声/喘息被当实词」。提成硬门禁前必须先清完存量。
-    "lexical": {"hard": False, "cmd": lambda ctx, d: [
+    # ✅ 2026-10-31 提成**硬门禁**：存量已清零（46090 行 / 实词脱落 0 / 音译 0 / 拉丁 0），
+    #    误报全部沉进 `data/style/ono_ja.txt`（拟声）和 `translit_ok.txt`（专有名词）。
+    #    它现在是永久哨兵：以后任何 03 重跑跑出新的「拉丁残留 / 音译摆烂 / 整行虚化」
+    #    都会在 06 直接失败，而不是悄悄进成品。
+    #    ⚠️ 触发时别急着改判据：先看报表，真的用 fix_text_exact + lock_from_plan 改；
+    #    拟声/名字往两张白名单各加一行即可。
+    "lexical": {"hard": True, "cmd": lambda ctx, d: [
         ctx.py, _script("lexical_audit.py"),
         # --lrc 要「含 RJ/ 的父目录」；--asr 给 run 目录（自动找 02_asr_fix，退 01_asr）
         "--lrc", os.path.dirname(final_dir(ctx)),
         "--asr", ctx.run.dir,
         "--rj", ctx.project,
         "--json", os.path.join(d, "lexical_audit.json"),
-        "--md", os.path.join(d, "LEXICAL_AUDIT.md")]},
+        "--md", os.path.join(d, "LEXICAL_AUDIT.md"),
+        "--max-findings", "0"]},
     # 语义覆盖（P2，2026-10-28）：原文出现的具体物被中文泛化成公文腔
     # （おしっこ→排泄行为、ちんこ→那个部位）时，check/scan/trunc 三道全放过。
     # ⚠️ 现在是**参考项**：loss 档已知 8 条未修（全库 23416 行），
