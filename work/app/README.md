@@ -164,3 +164,36 @@ python -m PyInstaller --noconfirm --clean \
 
 ⚠️ 一个例外：如果你手改过 `work/presets/` 里的知识表，**更新会被覆盖**。
 要保留自己的术语表，请放 `work/data/style/`（优先级高于 `presets/`），那里不会被碰。
+
+---
+
+## 10. 依赖必须显式白名单（血泪教训）
+
+管线脚本不是被 import 的，是**子进程 `OnseiCraft.exe xxx.py` 用 runpy 执行**的。
+PyInstaller 静态分析完全看不到它们的 import —— 所以 `OnseiCraft.spec` 里那份
+`collect_all(...)` 列表就是**全部真相**，漏一个的后果是：
+
+> GUI 一切正常，跑到 02 阶段才 `ModuleNotFoundError: No module named 'janome'`。
+
+2026-10-31 就这么漏了 7 个（janome / fugashi / unidic_lite / jieba / rapidfuzz /
+pypinyin / joblib / zhconv），包从 548MB 涨到 630MB 才补全。其中两个是大头：
+
+| 包 | 用途 | 体积 |
+|---|---|---|
+| `unidic_lite` | fugashi 的词典（06 词性判断） | 249 MB |
+| `janome` | 02 纠错 / scan_violations / term_mine | 202 MB |
+| `jieba` | 中文分词 | 42 MB |
+
+**所以发版前必须跑一次自检**（在装好的软件里，不是开发环境）：
+
+```bash
+OnseiCraft.exe work/scripts/deps_selftest.py
+# 可选：顺带测 PDF 台本提取
+OnseiCraft.exe work/scripts/deps_selftest.py D:\某台本.pdf
+```
+
+30 项检查：逐个 import + **真实调用**（janome/fugashi 分词、jieba、pypinyin、zhconv、
+rapidfuzz 匹配、pdfplumber 提取真实 PDF）+ presets 知识表存在性。全过才发版。
+
+想加新依赖时：先 `pip install`，再把它加进 spec 的 `collect_all` 列表，
+重新打包，跑 `deps_selftest.py` 确认，最后才发布。
