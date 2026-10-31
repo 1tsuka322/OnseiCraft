@@ -47,6 +47,7 @@
 
 **错位比丢失更坏**：把 A 句的人工修正贴到 B 句上，成品看起来「有修正」，实际是错的。
 """
+import os
 import re
 import unicodedata
 
@@ -57,7 +58,9 @@ _KEEP = re.compile(r"[^0-9a-z\u3040-\u30ff\u4e00-\u9fff]")
 _TS = re.compile(r"^\[?(\d+):(\d+(?:\.\d+)?)\]?$")
 
 WINDOW = 8.0
-MAX_DRIFT = 2.0
+# ⚠️ 2026-10-31：P3 把 cue 切短后，锁的 ts 会整体漂得更多（实测 RJ377265 有 747 条
+# 有锚点却没落地）。这里做成可覆盖，用来量「放宽到几秒能救回多少」。
+MAX_DRIFT = float(os.environ.get("KIKOERU_LOCK_MAX_DRIFT", "2.0"))
 MIN_SIM = 0.55
 MIN_SCORE = 0.75
 TIE = 0.06

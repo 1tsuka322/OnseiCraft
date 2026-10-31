@@ -87,7 +87,9 @@ except Exception:
 # `check.py` 的 LATIN 是 {3,}，管不到这些；这里补一张小表，避免把 EX2/DLsite 报成残留。
 # ⚠️ 只收「出现在专有名词里」的缩写，别把 `DS`/`JQ` 这类漏进来的垃圾也加进来。
 LATIN2_OK = {"EX", "DL", "MC", "JW", "QQ", "Me", "AV", "JK",
-             "SM", "HP", "TV", "ID", "SE", "CM", "NG", "PC", "VR", "CV"}
+             "SM", "HP", "TV", "ID", "SE", "CM", "NG", "PC", "VR", "CV",
+             # 2026-10-31 全库重跑后新增：KU-GU 是拟声、KISS MY LIPS 是英文原句
+             "KU", "GU", "MY"}
 
 # 假名 → 罗马字（够用即可：转写判定只比音，不比拼写规范）
 _ROMA = {

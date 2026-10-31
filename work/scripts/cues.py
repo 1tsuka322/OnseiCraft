@@ -29,13 +29,16 @@ import math
 # cue 边界
 HARD_PAUSE_SEC = 0.75      # 词间停顿 ≥ 此值 → 硬切
 SOFT_PAUSE_SEC = 0.30      # 候选切点（保护性切分时才用）
-# P3（2026-10-31）：上限可覆盖，方便 A/B「7.0s / 30 字」的双阈值方案，
-# 不用改代码（默认值 = 现状，所以不影响生产）。
-MAX_CUE_SEC = float(os.environ.get("KIKOERU_CUE_MAX_SEC", "10.0"))
-MAX_CUE_JA_CHARS = int(os.environ.get("KIKOERU_CUE_MAX_CHARS", "70"))
-# P3：**段边界处连读禁切**。whisper 的段边界不等于说话人真的停顿，
-# 实测 72.3% 的段间空隙 >600ms，但也有大量 <200ms 的「连读」被切成两句。
-# 0 = 关闭（默认，现状）；建议 A/B 值 0.20。
+# P3（2026-10-31）：**双阈值强切，默认已激活**（7.0s / 30 字）。
+# 全库 147 轨 CPU A/B（`tmp/daily/cue_ab.py`，见 `internal/docs/experiments/P3_CUE_AB_20261031.md`）：
+#   旧 10.0/70 → 跨≥3段 324 / >7s 2639 / >30字 1263
+#   新 7.0/30  → 跨≥3段 **288** / >7s **2297** / >30字 **1165**（cue 数只 +1.9%）
+# 仍可用 env 覆盖（回退旧口径：KIKOERU_CUE_MAX_SEC=10 KIKOERU_CUE_MAX_CHARS=70）。
+MAX_CUE_SEC = float(os.environ.get("KIKOERU_CUE_MAX_SEC", "7.0"))
+MAX_CUE_JA_CHARS = int(os.environ.get("KIKOERU_CUE_MAX_CHARS", "30"))
+# P3：**段边界处连读禁切**。⚠️ 2026-10-31 A/B 结论：**这是纯负作用，不要开**。
+# 开启后跨≥3 段的 cue 从 324 涨到 954（+194%）—— 等于把 `SEG_FLUSH_CHARS 16→10`
+# 当年压下去的「长块」又缝回去了。旋钮保留只为复现实验，生产永远 0。
 GAP_VETO_SEC = float(os.environ.get("KIKOERU_CUE_GAP_VETO", "0"))
 MIN_CUE_SEC = 1.0          # 句末标点切分的最低 cue 时长
 MIN_CUE_JA_CHARS = 16      # 句末标点切分的最低日文字数

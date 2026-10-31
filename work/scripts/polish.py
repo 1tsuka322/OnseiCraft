@@ -115,7 +115,7 @@ def assign_locks_for_track(fn, lines):
             "ambiguous": ["%s|%s" % k for k in ambig]}
 
 
-def apply_lock(fn, ts, text, ja="", cue_idx=None):
+def apply_lock(fn, ts, text, ja="", cue_idx=None, row_times=None):
     """返回该行最终文本：命中锁则用锁定文本（逐字，不再过 cleanup）。
 
     v3（2026-10-31，P0）：**cue 级文本锚定**。锁先分给 cue（`assign_locks_for_track`），
@@ -137,6 +137,16 @@ def apply_lock(fn, ts, text, ja="", cue_idx=None):
                 bi, bd = i, d
         if bi < 0 or bd > lock_match.WINDOW:
             return text
+        # ⚠️ 2026-10-31 修：**必须让给更近的那一行**。
+        # 以前是「窗口内谁先来谁拿走」（行是按时间顺序遍历的），于是锁的 ts 落在
+        # cue 的第 2 个显示行时，第 1 行会以 bd=4.68 把它抢走 → 写错行 + 原行内容
+        # 被覆盖成重复句（RJ1623028 00:30.38 实测：整句被搬到上一行）。
+        # 现在先问一遍「同 cue 里有没有更近的行」，有就什么都不做，等那行来取。
+        if row_times:
+            _mine = bd
+            for _ot in row_times:
+                if _ot is not None and abs(recs[bi]["t"] - _ot) < _mine - 1e-6:
+                    return text
         r = recs.pop(bi)          # 一条锁只落到一行，落完即消费
         _rec = LOCK_STAT["records"].get("%s|%s" % r["key"])
         if _rec is not None:
@@ -2707,11 +2717,12 @@ def main():
                     # 只去 **cue 内** 的重复：跨 cue 去掉会让那个 cue 一行都不剩，
                     # 触发下面 `keep < len(lines)` 的硬门禁。
                     _prev_tx = None
+                    _row_ts = [lock_match.parse_ts(fmt_lrc(x[0])) for x in _out]
                     for _t, _tx in _out:
                         if _tx:
                             # E1：句级锁定（人工修正逐字保留，不因重跑丢失）
                             _tx = apply_lock(src, fmt_lrc(_t), _tx, ln.get("text", ""),
-                                             cue_idx=idx)
+                                             cue_idx=idx, row_times=_row_ts)
                         if _tx and _tx == _prev_tx:
                             continue
                         _prev_tx = _tx
