@@ -37,7 +37,7 @@ def _parse_ts(s):
         return None
 
 
-def build_report(entry, items, full=True, app_version=""):
+def _txt_report(entry, items, full=True, app_version=""):
     """entry: store.list_stores() 的一条；items: [{track, ts, comment}]。"""
     L = []
     bar = "=" * 58
@@ -110,11 +110,116 @@ def build_report(entry, items, full=True, app_version=""):
     return "\n".join(L) + "\n"
 
 
-def save_report(text, project, out_dir=None):
+def save_report(text, project, out_dir=None, ext="md"):
     d = out_dir or settings.load_app()["feedback_dir"]
     os.makedirs(d, exist_ok=True)
-    fn = "feedback_%s_%s.txt" % (project, time.strftime("%Y%m%d_%H%M%S"))
+    fn = "feedback_%s_%s.%s" % (project, time.strftime("%Y%m%d_%H%M%S"), ext)
     p = os.path.join(d, fn)
     with open(p, "w", encoding="utf-8") as f:
         f.write(text)
     return p
+
+
+# ---------------------------------------------------------------- 新格式
+# 为什么改：txt 是给人看的，agent 要解析就得猜格式。
+# Markdown 人类可读 + LLM 天然理解；JSON 给脚本批量处理。原文一律用围栏包住，
+# 免得日文里的 `#`、`*`、`|` 被当成 Markdown 语法。
+
+def _fmt_lines(lines):
+    return "\n".join("[%s] %s" % (_ts(t), x) for t, x in lines)
+
+
+def _md_report(entry, items, full=True, app_version=""):
+    L = []
+    L.append("# OnseiCraft 字幕反馈")
+    L.append("")
+    L.append("| 字段 | 值 |")
+    L.append("| --- | --- |")
+    L.append("| 作品号 | `%s` |" % entry.get("project", ""))
+    L.append("| 运行 ID | `%s` |" % entry.get("run_id", ""))
+    L.append("| 导出时间 | %s |" % time.strftime("%Y-%m-%d %H:%M:%S"))
+    if app_version:
+        L.append("| 软件版本 | %s |" % app_version)
+    if entry.get("source"):
+        L.append("| 音频目录 | `%s` |" % entry["source"])
+    L.append("| 反馈轨道 | %d 条 |" % len(items))
+    L.append("")
+    L.append("> **术语**：`ASR 原文` = 语音识别直出的日文；"
+             "`修后原文` = 经确定性错字表修正后、管线实际拿去翻译的日文；"
+             "`当前字幕` = 最终成品 LRC。")
+    L.append("")
+
+    for i, it in enumerate(items, 1):
+        name = it["track"]
+        la = store.track_text(entry["path"], "asr", name)
+        lf = store.track_text(entry["path"], "fix", name)
+        ll = store.track_text(entry["path"], "lrc", name)
+        sec = _parse_ts(it.get("ts"))
+
+        L.append("---")
+        L.append("")
+        L.append("## %d. `%s`" % (i, name))
+        L.append("")
+        comment = (it.get("comment") or "").strip()
+        L.append("**我的意见**")
+        L.append("")
+        L.append("> %s" % (comment if comment else "（未填写具体意见）"))
+        L.append("")
+        if sec is not None:
+            L.append("**标记时间点**：`%s`" % _ts(sec))
+            L.append("")
+
+        if full:
+            pairs = [("ASR 原文（全轨）", la), ("修后原文（全轨）", lf), ("当前字幕（全轨）", ll)]
+        else:
+            pairs = [("ASR 原文（±60s）", _near(la, sec, 60.0) if sec is not None else la),
+                     ("修后原文（±60s）", _near(lf, sec, 60.0) if sec is not None else lf),
+                     ("当前字幕（±60s）", _near(ll, sec, 60.0) if sec is not None else ll)]
+        for label, lines in pairs:
+            L.append("### %s · %d 行" % (label, len(lines)))
+            L.append("")
+            L.append("```text")
+            L.append(_fmt_lines(lines) if lines else "（暂存里没有这一份）")
+            L.append("```")
+            L.append("")
+    return "\n".join(L).rstrip() + "\n"
+
+
+def _json_report(entry, items, full=True, app_version=""):
+    import json
+    out = {
+        "format": "onseicraft-feedback/1",
+        "project": entry.get("project", ""),
+        "run_id": entry.get("run_id", ""),
+        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "app_version": app_version or "",
+        "source": entry.get("source", ""),
+        "tracks": [],
+    }
+    for it in items:
+        name = it["track"]
+        la = store.track_text(entry["path"], "asr", name)
+        lf = store.track_text(entry["path"], "fix", name)
+        ll = store.track_text(entry["path"], "lrc", name)
+        sec = _parse_ts(it.get("ts"))
+        if not full and sec is not None:
+            la, lf, ll = _near(la, sec, 60.0), _near(lf, sec, 60.0), _near(ll, sec, 60.0)
+        out["tracks"].append({
+            "track": name,
+            "ts": _ts(sec) if sec is not None else "",
+            "ts_sec": sec,
+            "comment": (it.get("comment") or "").strip(),
+            "asr": ["[%s] %s" % (_ts(t), x) for t, x in la],
+            "fixed": ["[%s] %s" % (_ts(t), x) for t, x in lf],
+            "lrc": ["[%s] %s" % (_ts(t), x) for t, x in ll],
+        })
+    return json.dumps(out, ensure_ascii=False, indent=1)
+
+
+def build_report(entry, items, full=True, app_version="", fmt="md"):
+    """fmt: md（默认，人机都好读） / json（结构化） / txt（旧格式，保留兼容）。"""
+    if fmt == "json":
+        return _json_report(entry, items, full, app_version)
+    if fmt == "txt":
+        return _txt_report(entry, items, full, app_version)
+    return _md_report(entry, items, full, app_version)

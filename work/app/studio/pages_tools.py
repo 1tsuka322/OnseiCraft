@@ -213,11 +213,25 @@ class FeedbackPage(Page):
         if not items:
             QMessageBox.information(self, "还没有选轨道", "请先勾选至少一条不满意的轨道。")
             return
-        text = feedback.build_report(e, items, full=self.full.isChecked())
-        p = feedback.save_report(text, e["project"])
+        # 让用户选格式：md（默认，人和 AI 都好读）/ json（给脚本）/ txt（旧）
+        fb_dir = settings.load_app()["feedback_dir"]
+        os.makedirs(fb_dir, exist_ok=True)
+        default = os.path.join(fb_dir, "feedback_%s_%s.md" % (
+            e["project"], time.strftime("%Y%m%d_%H%M%S")))
+        p, _sel = QFileDialog.getSaveFileName(
+            self, "导出反馈", default,
+            "Markdown（推荐：人和 AI 都好读）(*.md);;JSON（结构化，给脚本用）(*.json);;"
+            "纯文本 (*.txt)")
+        if not p:
+            return
+        low = p.lower()
+        fmt = "json" if low.endswith(".json") else ("txt" if low.endswith(".txt") else "md")
+        text = feedback.build_report(e, items, full=self.full.isChecked(), fmt=fmt)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(text)
         box = QMessageBox(self)
         box.setWindowTitle("已导出")
-        box.setText("反馈日志已生成：\n%s\n\n可以直接把这个 txt 发给开发者。" % p)
+        box.setText("反馈已生成：\n%s\n\n把这个文件发给开发者即可。" % p)
         b1 = box.addButton("打开所在文件夹", QMessageBox.ActionRole)
         box.addButton("好", QMessageBox.AcceptRole)
         box.exec()

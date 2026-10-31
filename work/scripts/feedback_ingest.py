@@ -58,9 +58,62 @@ def classify(text):
     return "corpus", "代码词 %d / 语料词 %d" % (c, l)
 
 
+
+def _parse_json(path):
+    import json
+    d = json.load(open(path, encoding="utf-8"))
+    out = []
+    for t in d.get("tracks") or []:
+        out.append({
+            "project": d.get("project", ""),
+            "run": d.get("run_id", ""),
+            "track": t.get("track", "（未知轨道）"),
+            "opinion": (t.get("comment") or "").strip()[:1200],
+            "ts": t.get("ts", ""),
+            "raw": json.dumps(t, ensure_ascii=False)[:2000],
+        })
+    return out
+
+
+MD_HEAD = re.compile(r"^## \d+\. `(.+?)`\s*$", re.M)
+MD_COMMENT = re.compile(r"^\*\*我的意见\*\*[ \t]*\r?\n+> ?(.*?)$", re.M)
+MD_TS = re.compile(r"^\*\*标记时间点\*\*：`([\d:.]+)`", re.M)
+MD_META = re.compile(r"^\| (作品号|运行 ID) \| `([^`]*)` \|$", re.M)
+
+
+def _parse_md(path):
+    txt = open(path, encoding="utf-8", errors="replace").read()
+    meta = dict(MD_META.findall(txt))
+    proj = meta.get("作品号", "")
+    run = meta.get("运行 ID", "")
+    heads = list(MD_HEAD.finditer(txt))
+    out = []
+    for i, m in enumerate(heads):
+        body = txt[m.end(): heads[i + 1].start() if i + 1 < len(heads) else len(txt)]
+        cm = MD_COMMENT.search(body)
+        tsm = MD_TS.search(body)
+        out.append({
+            "project": proj,
+            "run": run,
+            "track": m.group(1).strip(),
+            "opinion": (cm.group(1).strip() if cm else "")[:1200],
+            "ts": tsm.group(1) if tsm else "",
+            "raw": body[:2000],
+        })
+    return out
+
+
 def parse(path):
-    """一份 txt → [{project, run, track, opinion, ts, raw}]。"""
+    """一份反馈 → [{project, run, track, opinion, ts, raw}]。
+
+    支持三种：`.json`（结构化）/ `.md`（默认导出格式）/ `.txt`（旧格式）。
+    """
+    ext = os.path.splitext(path)[1].lower()
     try:
+        if ext == ".json":
+            return _parse_json(path)
+        if ext == ".md":
+            return _parse_md(path)
         txt = open(path, encoding="utf-8", errors="replace").read()
     except Exception:
         return []
@@ -136,7 +189,8 @@ def main():
     files = []
     for d in [STUDIO_OUT, INBOX] + a.dir:
         if os.path.isdir(d):
-            files.extend(sorted(glob.glob(os.path.join(glob.escape(d), "*.txt"))))
+            for _ext in ("*.txt", "*.md", "*.json"):
+                files.extend(sorted(glob.glob(os.path.join(glob.escape(d), _ext))))
     files = [f for f in files if os.path.basename(f) != "README.txt"]
 
     if not files:
