@@ -134,3 +134,33 @@ python -m PyInstaller --noconfirm --clean \
    少了这段，01_asr 会「启动一个 GUI」然后卡住。
 3. **`KIKOERU_ROOT` 必须在最早期注入**：`paths.py` / `rootloc.py` 都靠它定位 `work/`，
    读不到就按脚本位置反推——在 `_internal` 布局里会算到安装目录外面去。
+
+---
+
+## 9. 更新（软件内一键，不用重新配置）
+
+设置页 → 关于 → **检查更新**。有新版会直接弹出更新日志，点「下载并安装」后自动：
+下载 → 关闭本程序 → 静默安装 → 装完自动打开新版。装完第一次启动还会再弹一次
+「本次更新内容」（记在 `work/data/update_pending.json`，读过即删）。
+
+**为什么不用重新配置**：安装包只覆盖这三处 ——
+
+```
+{app}/_internal/            程序本体
+{app}/work/scripts/         阶段脚本
+{app}/work/pipeline/        管线代码 + 公共配置
+{app}/work/presets/         默认知识表（术语/错字/允许集）
+```
+
+而下面这些**都不在安装包里**，覆盖安装碰不到：
+
+```
+{app}/models/                       模型（约 8GB）
+{app}/work/pipeline/pipeline.local.json   你的模型路径（iss 里 Excludes 掉了）
+{app}/work/data/                    ASR 暂存、锁、反馈日志、运行记录
+{app}/work/runs/                    每次执行的沙盒
+{app}/kikoerusubtitle/              已生成的字幕
+```
+
+⚠️ 一个例外：如果你手改过 `work/presets/` 里的知识表，**更新会被覆盖**。
+要保留自己的术语表，请放 `work/data/style/`（优先级高于 `presets/`），那里不会被碰。

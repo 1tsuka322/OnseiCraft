@@ -4,12 +4,14 @@ import os
 import threading
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFrame,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox,
+                               QDialog, QTextBrowser,
+                               QFileDialog, QFrame,
                                QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                                QMessageBox, QProgressBar, QPushButton, QTableWidget,
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
-from . import feedback, models, project as proj, runner as R, settings, store, theme
+from . import feedback, models, project as proj, runner as R, settings, store, theme, update
 from .widgets import CardButton, hline, open_path
 from .pages_wizard import Page
 
@@ -335,15 +337,79 @@ class ModelDownloader(QThread):
             self.done.emit(False, "%s: %s" % (type(e).__name__, e))
 
 
+def show_notes_dialog(parent, title, header, notes, ok_text="下载并安装"):
+    """展示更新日志。返回 True 表示用户点了 ok_text。
+
+    用 QTextBrowser + setMarkdown，而不是 QMessageBox.setDetailedText——
+    后者默认折叠，用户得再点一次「显示详情」才看得到更新内容。
+    """
+    dlg = QDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.resize(620, 440)
+    lay = QVBoxLayout(dlg)
+    lay.setContentsMargins(16, 14, 16, 14)
+    lay.setSpacing(10)
+    h = QLabel(header)
+    h.setWordWrap(True)
+    lay.addWidget(h)
+    tb = QTextBrowser()
+    tb.setOpenExternalLinks(True)
+    tb.setMarkdown(notes or "（这个版本没有写更新说明）")
+    lay.addWidget(tb, 1)
+    row = QHBoxLayout()
+    row.addStretch(1)
+    btn_no = QPushButton("以后再说")
+    btn_yes = QPushButton(ok_text)
+    btn_yes.setObjectName("Primary")
+    row.addWidget(btn_no)
+    row.addWidget(btn_yes)
+    lay.addLayout(row)
+    btn_no.clicked.connect(dlg.reject)
+    btn_yes.clicked.connect(dlg.accept)
+    return dlg.exec() == QDialog.Accepted
+
+
+class UpdateWorker(QThread):
+    """查更新 / 下安装包。网络操作不能放 UI 线程，否则界面假死。"""
+    progress = Signal(int, str)
+    checked = Signal(object, str)
+    downloaded = Signal(str, str)
+
+    def __init__(self, mode, info=None, parent=None):
+        super(UpdateWorker, self).__init__(parent)
+        self.mode = mode
+        self.info = info
+        self.cancel = threading.Event()
+
+    def run(self):
+        if self.mode == "check":
+            try:
+                self.checked.emit(update.check(), "")
+            except Exception as e:
+                self.checked.emit(None, str(e))
+            return
+        try:
+            def cb(done, total):
+                self.progress.emit(int(done * 100 / max(1, total)),
+                                   "%s / %s" % (proj.human_size(done), proj.human_size(total)))
+
+            p = update.download(self.info, cb, self.cancel)
+            self.downloaded.emit(p, "")
+        except Exception as e:
+            self.downloaded.emit("", str(e))
+
+
 class SettingsPage(Page):
     saved = Signal()
     def __init__(self, parent=None):
         super(SettingsPage, self).__init__(
-            "设置", "输出目录与模型。模型不在安装包里（约 7.5GB），"
+            "设置", "输出目录与模型。模型不在安装包里（约 8GB），"
                     "点「下载」会自动放到安装目录下的 models\\ 并写好配置。", parent)
         self.rows = {}
         self.states = {}
         self.downloader = None
+        self.upd_worker = None
+        self._update_info = None
 
         # 输出目录
         self.add(self._section("输出"))
@@ -378,6 +444,35 @@ class SettingsPage(Page):
         self.pmsg = QLabel("")
         self.pmsg.setObjectName("Muted")
         self.add(self.pmsg)
+
+        # ---- 关于 / 检查更新 ----
+        self.add(self._section("关于"))
+        ver_row = QHBoxLayout()
+        ver_row.addWidget(QLabel("OnseiCraft %s" % update.__version__))
+        self.btn_update = QPushButton("检查更新")
+        self.btn_update.clicked.connect(self._check_update)
+        ver_row.addWidget(self.btn_update)
+        ver_row.addStretch(1)
+        self.lay.addLayout(ver_row)
+
+        self.upd_msg = QLabel("")
+        self.upd_msg.setObjectName("Muted")
+        self.upd_msg.setWordWrap(True)
+        self.add(self.upd_msg)
+
+        self.upd_bar = QProgressBar()
+        self.upd_bar.setRange(0, 100)
+        self.upd_bar.hide()
+        self.add(self.upd_bar)
+
+        self.btn_install = QPushButton("下载并安装")
+        self.btn_install.setObjectName("Primary")
+        self.btn_install.hide()
+        self.btn_install.clicked.connect(self._do_update)
+        inst_row = QHBoxLayout()
+        inst_row.addWidget(self.btn_install)
+        inst_row.addStretch(1)
+        self.lay.addLayout(inst_row)
 
         self.add_stretch()
         bar = QHBoxLayout()
@@ -415,7 +510,7 @@ class SettingsPage(Page):
         edit = QLineEdit(settings.get_model(it["key"]) or "")
         edit.setPlaceholderText("未设置 —— 点右侧「下载」自动安装")
         btn = QPushButton("下载")
-        btn.setFixedWidth(72)
+        btn.setFixedWidth(88)
         btn.clicked.connect(lambda: self._start_download(it, edit, btn))
         lay.addWidget(lb)
         lay.addWidget(edit, 1)
@@ -512,6 +607,83 @@ class SettingsPage(Page):
         dev, compute = R.detect_device()
         self.device.setText("计算设备：%s（%s）" % (
             "GPU / CUDA" if dev == "cuda" else "CPU（识别会很慢）", compute))
+
+    # ---- 检查更新 ----
+    def _check_update(self):
+        if self.upd_worker and self.upd_worker.isRunning():
+            return
+        self.btn_update.setEnabled(False)
+        self.upd_msg.setText("正在检查…")
+        self.btn_install.hide()
+        self.upd_worker = UpdateWorker("check", parent=self)
+        self.upd_worker.checked.connect(self._on_checked)
+        self.upd_worker.start()
+
+    def _on_checked(self, info, err):
+        self.btn_update.setEnabled(True)
+        if err:
+            self.upd_msg.setText("检查失败：%s" % err)
+            return
+        if not info:
+            self.upd_msg.setText("已是最新版本（%s）。" % update.__version__)
+            self.btn_install.hide()
+            return
+        self._update_info = info
+        self.upd_msg.setText(
+            "发现新版本 %s（%s）。" % (
+                info["tag"], proj.human_size(info["size"]) if info["size"] else "大小未知"))
+        self.btn_install.show()
+        # 直接把更新日志摆出来，而不是让用户自己找
+        if show_notes_dialog(
+                self, "发现新版本 %s" % info["tag"],
+                "OnseiCraft %s 可用（%s）。\n"
+                "更新只替换程序文件——模型、输出目录、已生成的字幕都不会动，不用重新配置。"
+                % (info["tag"], proj.human_size(info["size"]) if info["size"] else "大小未知"),
+                info["notes"]):
+            self._do_update()
+
+    def _do_update(self):
+        if not self._update_info:
+            return
+        self.btn_install.setEnabled(False)
+        self.upd_bar.show()
+        self.upd_bar.setValue(0)
+        self.upd_msg.setText("正在下载…")
+        self.upd_worker = UpdateWorker("download", self._update_info, parent=self)
+        self.upd_worker.progress.connect(self._on_upd_prog)
+        self.upd_worker.downloaded.connect(self._on_downloaded)
+        self.upd_worker.start()
+
+    def _on_upd_prog(self, pct, text):
+        self.upd_bar.setValue(pct)
+        self.upd_msg.setText(text)
+
+    def _on_downloaded(self, path, err):
+        self.btn_install.setEnabled(True)
+        if err:
+            self.upd_msg.setText("下载失败：%s" % err)
+            return
+        r = QMessageBox.question(
+            self, "准备安装",
+            "新版已下载完成。\n\n点「是」会关闭 OnseiCraft 并自动安装，装完自动打开新版。\n"
+            "模型、配置、已生成的字幕都不会动。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if r != QMessageBox.Yes:
+            self.upd_msg.setText("已下载到：%s（可稍后手动运行）" % path)
+            return
+        # 记一笔「从哪个版本升到哪个版本 + 更新内容」，新版首次启动时弹出来给用户看
+        try:
+            import json
+            pend = os.path.join(settings.ROOT, "data", "update_pending.json")
+            os.makedirs(os.path.dirname(pend), exist_ok=True)
+            json.dump({"from": update.__version__,
+                       "to": (self._update_info or {}).get("tag", ""),
+                       "notes": (self._update_info or {}).get("notes", "")},
+                      open(pend, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        except Exception:
+            pass
+        update.install_and_restart(path)
+        QApplication.quit()
 
     def _save(self):
         cfg = settings.load_app()

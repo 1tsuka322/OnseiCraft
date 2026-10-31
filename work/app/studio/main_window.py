@@ -2,7 +2,9 @@
 """主窗口：页面路由 + 向导状态。"""
 import os
 
-from PySide6.QtCore import Qt
+import json
+
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
@@ -66,6 +68,7 @@ class MainWindow(QMainWindow):
 
         self.job = {}
         self._show(0, "首页")
+        QTimer.singleShot(0, self._show_update_notes)
 
     # ---- 路由 ----
     def _show(self, idx, crumb=""):
@@ -138,6 +141,23 @@ class MainWindow(QMainWindow):
 
     def go_settings(self):
         self._show(7, "设置")
+
+    # ---- 更新后的「本次更新内容」 ----
+    def _show_update_notes(self):
+        """上次是「一键更新」装的：新版首次启动把更新日志摆给用户看。"""
+        p = os.path.join(settings.ROOT, "data", "update_pending.json")
+        if not os.path.exists(p):
+            return
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+            os.remove(p)
+        except Exception:
+            return
+        T.show_notes_dialog(
+            self, "已更新到 %s" % d.get("to", ""),
+            "OnseiCraft 已从 %s 更新到 %s。\n本次更新内容：" % (
+                d.get("from", "?"), d.get("to", "?")),
+            d.get("notes", ""), ok_text="知道了")
 
     # ---- 关窗 ----
     def closeEvent(self, e):

@@ -55,7 +55,7 @@ else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
     ROOT = os.path.abspath(os.path.join(APP_DIR, ".."))
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 def _run_stage_script(arg):

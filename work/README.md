@@ -31,6 +31,13 @@ work/
 │       ├── project.py       音频归集 / RJ 号推断 / 台本 PDF→txt
 │       └── pages_*.py       首页 · 三步向导 · 反馈 · 暂存 · 设置
 │
+├── feedback/                ★ 反馈台账（后续工作问题都从这里来）
+│   ├── README.md            流程：收 → 消化 → 判类 → 处理 → 关闭
+│   ├── ISSUES_CODE.md       代码层条目（崩溃/界面/打包/性能）
+│   ├── ISSUES_CORPUS.md     语料层条目（术语/错字/译法/断句）
+│   ├── inbox/               用户发来的原始 txt（不进库）
+│   └── processed/           已消化的原始 txt（不进库）
+│
 ├── pipeline/                ★ 管线软件（唯一执行入口）
 │   ├── pipeline.py          23 行薄壳，真正的实现在 pipeline_lib/
 │   ├── pipeline_lib/

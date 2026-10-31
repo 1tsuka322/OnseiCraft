@@ -132,14 +132,15 @@ $P promote --run <run_id>                                     # 进生产（门�
 
 没有 GPU 也能跑 `02_asr_fix` / `05_term_lock` / `06_checks` 三个阶段和全部门禁——它们不调模型。
 
-## 知识表
+## 知识表（安装包已内置）
 
-这个项目的效果**有很大一部分不在代码里，而在知识表**——术语怎么统一、ASR 错字怎么改、
-什么算表记差异、译文该是什么风格。`work/presets/` 是**可以公开的那部分**：
-规则、词典、统计量、语言事实。
+术语怎么统一、ASR 错字怎么改、什么算表记差异、译文该是什么风格——这些**不在代码里，
+在知识表里**。安装包已经把公开的那部分（规则、词典、统计量）打进 `work/presets/`，
+装完就能用，**不需要自己准备**。
 
-风格库查找顺序：`KIKOERU_STYLE` → `work/data/style` → `work/presets`。
-所以「有私有语料」和「刚 clone」两种环境跑的是同一份代码。
+想改？把自己的表放 `work/data/style/`（优先级高于 `presets/`）：
+查找顺序是 `KIKOERU_STYLE` → `work/data/style` → `work/presets`，
+所以「有私有语料」和「刚 clone」跑的是同一份代码。
 
 详见 [`work/presets/README.md`](work/presets/README.md)。
 

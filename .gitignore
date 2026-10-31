@@ -40,6 +40,12 @@ internal/
 # 工作区记忆
 .workbuddy-ai/
 
+# 用户反馈原文（含用户内容与作品信息，不进库）；两份 ISSUES 台账进库
+work/feedback/inbox/*
+work/feedback/processed/*
+!work/feedback/inbox/.gitkeep
+!work/feedback/processed/.gitkeep
+
 # Python
 __pycache__/
 *.py[cod]
