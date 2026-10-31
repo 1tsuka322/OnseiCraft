@@ -15,6 +15,22 @@ work/
 ├── requirements.txt         依赖（pip install -r）
 ├── CONTRIBUTING.md          参与方式
 │
+├── dist/                    发布产物：OnseiCraft-<版本>-Setup.exe（不进库）
+│
+├── app/                     ★ OnseiCraft：桌面软件（管线的人类入口）
+│   ├── OnseiCraft.bat       双击启动
+│   ├── main.py              入口（先注入 KIKOERU_PROD，再 import pipeline_lib）
+│   ├── README.md            界面/数据流/配置/排错/打包
+│   ├── OnseiCraft.spec      PyInstaller 打包配置（onedir）
+│   ├── installer.iss        Inno Setup 安装包（自选目录/快捷方式/卸载）
+│   ├── ChineseSimplified.isl 安装向导中文语言包
+│   └── studio/              界面 + 执行器
+│       ├── runner.py        六阶段执行线程（进度/ETA/日志/promote）
+│       ├── store.py         ASR 暂存（asr / fix / lrc 三份）
+│       ├── feedback.py      反馈日志 txt
+│       ├── project.py       音频归集 / RJ 号推断 / 台本 PDF→txt
+│       └── pages_*.py       首页 · 三步向导 · 反馈 · 暂存 · 设置
+│
 ├── pipeline/                ★ 管线软件（唯一执行入口）
 │   ├── pipeline.py          23 行薄壳，真正的实现在 pipeline_lib/
 │   ├── pipeline_lib/
@@ -146,6 +162,9 @@ python work/pipeline/pipeline.py run --run <run_id> --from 03_translate
 ## 3. 常用命令
 
 ```bash
+# 图形界面（拖入音频就能跑，不改变管线行为）
+work/app/OnseiCraft.bat
+
 # 自检（不需要数据、不需要 GPU）
 python work/pipeline/pipeline.py selftest                 # 13 项
 python work/scripts/empty_check.py --selftest             # 4 项

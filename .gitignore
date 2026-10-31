@@ -63,3 +63,6 @@ Thumbs.db
 
 # 本机覆盖配置（模型路径等，不进库）
 work/pipeline/pipeline.local.json
+# Studio 的本机偏好（输出目录、实测倍率），换机器要重新选
+work/app/app.json
+dist/
