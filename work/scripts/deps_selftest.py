@@ -77,9 +77,7 @@ def _fuzz():
 
 def _pdf():
     import pdfplumber
-    path = sys.argv[1] if len(sys.argv) > 1 else None
-    if not path:
-        raise RuntimeError("没给 PDF 路径（跳过我）")
+    path = sys.argv[1]
     with pdfplumber.open(path) as pdf:
         txt = pdf.pages[0].extract_text() or ""
     assert txt.strip(), "PDF 提取为空"
@@ -87,8 +85,14 @@ def _pdf():
 
 for _n, _f in (("janome 分词", _janome), ("fugashi 分词", _fugashi), ("jieba 分词", _jieba),
                ("pypinyin 注音", _pinyin), ("zhconv 繁简", _zhconv),
-               ("rapidfuzz 匹配", _fuzz), ("pdfplumber 提取", _pdf)):
+               ("rapidfuzz 匹配", _fuzz)):
     check(_n, _f)
+
+# PDF 提取要真实文件才有意义；没给路径就跳过，不计入失败
+if len(sys.argv) > 1:
+    check("pdfplumber 提取", _pdf)
+else:
+    print("（未提供 PDF 路径，跳过 PDF 提取检查）")
 
 
 # ---------------------------------------------------------------- 3. 知识表在不在
@@ -108,9 +112,6 @@ print("=" * 60)
 for n in OK:
     print("  OK    %s" % n)
 for n, t, e in BAD:
-    if n == "pdfplumber 提取" and "没给 PDF 路径" in e:
-        print("  SKIP  %s（未提供 PDF）" % n)
-        continue
     print("  FAIL  %-22s %s: %s" % (n, t, e))
 print("=" * 60)
 print("%d 通过 / %d 失败" % (len(OK), len(BAD)))
