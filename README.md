@@ -1,12 +1,36 @@
-# kikoeru-subtitle
+# OnseiCraft
 
-把**日语音频**做成**中文 LRC 字幕**的确定性流水线。
+把**日语音频**做成**中文 LRC 字幕**的桌面软件 + 确定性流水线。
 
 不是「调个模型翻译一遍」——是六阶段流水线 + 可追溯指纹 + 硬门禁：
 每一步的产物都能回溯到「用了哪份参数、哪份知识表、哪版代码」，改一行译文也必须留痕。
 
 > **本仓库只包含代码与文档。**
 > 音频、成品字幕、平行语料、术语表、句级锁都不进版本库。
+
+---
+
+## 下载安装（Windows）
+
+到 [Releases](https://github.com/1tsuka322/OnseiCraft/releases/latest) 下载
+`OnseiCraft-x.y.z-Setup.exe`，双击安装即可。
+
+- **可自选安装目录**，不需要管理员权限，装完桌面有快捷方式
+- 首次启动会提示缺模型 → 点「下载缺失的模型」，自动下载约 **8GB**
+  （Whisper large-v3 3.1GB + Sakura-7B 4.2GB + llama.cpp 0.7GB），支持断点续传、可切国内镜像
+- 之后就是：**拖入音频或整个文件夹** → 选台本（可选）→ 等它跑完 → 字幕在输出目录
+- 卸载不会删模型和已生成的字幕
+
+安装包**不含模型**（塞进去要 8.5GB 以上），也不含音频/成品/语料。
+
+## 它长什么样
+
+首页三张卡片（音频文件 / 反馈日志 / ASR 暂存管理）→ 三步向导（音频 → 有无台本 → 生成）。
+生成时逐条显示六个阶段的状态、总进度和预计剩余时间。
+
+- **反馈日志**：勾出不满意的轨道，导出「你的意见 + ASR 识别原文 + 修后原文 + 当前字幕」，
+  直接发给开发者就能定位是识别、翻译还是润色的锅。
+- **ASR 暂存管理**：识别中间产物留着还是删掉，由你决定。
 
 ---
 
@@ -22,6 +46,7 @@ kikoeru/
 │   └── RJxxxxxxx/…
 └── work/                 全部工作文件（代码/文档/数据/运行产物/临时）
     ├── README.md         ← **结构树 + 每个目录干什么 + 常用命令**
+    ├── app/              ★ OnseiCraft 桌面软件（界面 + 打包配置）
     ├── pipeline/         管线软件（pipeline.py + pipeline_lib）
     ├── scripts/          阶段脚本（ASR/翻译/润色/校验/修复）
     ├── presets/          公开知识包（术语/错字/风格统计）
@@ -133,6 +158,7 @@ $P promote --run <run_id>                                     # 进生产（门�
 | 想了解 | 看 |
 | --- | --- |
 | **目录结构与每层职责** | [`work/README.md`](work/README.md) |
+| **桌面软件（安装 / 使用 / 打包 / 排错）** | [`work/app/README.md`](work/app/README.md) |
 | **模型下载 / 放哪 / 怎么配（本地跑必读）** | [`work/docs/MODELS.md`](work/docs/MODELS.md) |
 | 整体架构与设计取舍 | [`work/docs/ARCHITECTURE.md`](work/docs/ARCHITECTURE.md) |
 | 管线用法、指纹、断点续跑、GPU 串行 | [`work/docs/PIPELINE.md`](work/docs/PIPELINE.md) |
