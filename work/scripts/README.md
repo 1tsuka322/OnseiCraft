@@ -908,8 +908,53 @@ python dedup_corpus.py --write --term 我慢汁
 | `asr_halluc.py` | 早期幻觉清洗（套话/重复循环），已被 `asr_latin_halluc.py` + `collapse_rep.py` 取代，保留做对照。 |
 | `fragment_join.py` | 碎片行合并的独立工具（管线内已由 cue 层处理）。 |
 | `lock_match.py` / `lock_migrate.py` / `lock_coverage.py` | **E1 句级锁的三件套**（见下方专节）。`test_lock_apply.py` 是边界测试（12/12）。 |
+| `lexical_audit.py` | **词汇层审计**：实词脱落 / 音译 / 2 字母拉丁（见下方专节）。`--selftest` 21/21。 |
 | `rootloc.py` / `styleloc.py` | **路径解析**：`rootloc` 找仓库根（work 的上一级），`styleloc` 找知识表目录（`KIKOERU_STYLE` → `data/style` → `presets`）。⚠️ 独立脚本**必须**用它们，别自己拼路径（`os.path.join(ROOT, "kikoerusubtitle")` 是 work 里的空目录）。 |
 | `test_punct_norm.py` | 标点归一的边界测试。 |
+
+## 词汇层审计：找「看起来是译文、其实是垃圾」的行（2026-10-31，P2）
+
+`check` 查日文残留/标点，`empty` 查空行，`trunc` 查行尾悬空，`semantic` 查具体物被泛化 ——
+这四道**全放过**的一类缺陷是**词汇层塌陷**：
+
+```
+だーいすきー   → 「哒——！」   整行只剩语气，实词全丢
+ハイボク       → 「嗨波克」   音译，中文读者看不懂
+DS             → 「DS」       2 字母拉丁残留（check 只抓 ≥3 字母）
+```
+
+它们不是漏译（中文里有字）、不是空行、不是日文残留，只有拿
+「**日文侧有没有实词** × **中文侧是不是全虚词**」这个交叉判据才抓得到。
+
+| 检测器 | 判据 | 处置 |
+|---|---|---|
+| `content_drop` | 日文有实词 且 中文分词后全是 `y/e/w/o/x`（语气/叹词/标点/拟声/非语素） | 红，人工核 |
+| `ellipsis_only` | 中文整行只有「…」而日文有实词 | 黄，单独计数（那是重试阶梯的兜底，不是虚化） |
+| `translit` | 中文里有个**不成词**的 2~4 字片段，其拼音与**片假名串**的罗马字整体相似 ≥0.75 | 黄，人工核 |
+| `latin2` | 2 个字母的拉丁串（带词边界 + 复用 `check.LATIN_OK` 白名单） | 黄，人工核 |
+
+**日文侧「有实词」的判定顺序**（顺序就是三次调参的结果，别调回去）：
+
+1. 含汉字 → 有
+2. **纯重复**（`ぎゅぎゅぎゅ`/`くるくるくるくる`/`ねえねえ`）→ 无（fugashi 会把它们切成名詞）
+3. **短且音素单调**（`あぁーふっ`/`んふ`）→ 无（喘息）
+4. **fugashi 分词**（unidic-lite）：`pos1 ∈ {名詞,動詞,形容詞,形状詞,副詞,連体詞,代名詞}`
+   且 `pos2 ∉ {非自立,接尾}` → 有；**跑通了且一个实词都没有 → 定论为无**
+5. 没装 fugashi 才退到「去母音后 ≥3 假名」
+
+第 4 层是权威的：它把 `よっしょ`/`むむむ`/`ガルガルガルガルうん` 全判成 `感動詞`，
+而这些译成「嘿咻」「唔唔唔」是**对的**。第一版让「≥3 假名」先说话，误报占了三分之一。
+
+**实测精度约 54%**（302 条里约 160 条是真的）：误报主要是拟声/喘息被当成实词句，
+以及显示行拆分导致的「ja 长、zh 短」。**它是审校清单，不是判决书。**
+
+```bash
+python lexical_audit.py --selftest                                   # 21 项
+python lexical_audit.py --all --lrc ../kikoerusubtitle --asr-root runs
+python lexical_audit.py --lrc ../kikoerusubtitle --asr runs/<run_id> --rj RJ1228193
+```
+
+06 门禁里的 `lexical` 项就是它（`hard=False`，只出报表）。
 
 ## E1 句级锁：文本锚定 + 覆盖度断言（2026-10-31，P0）
 

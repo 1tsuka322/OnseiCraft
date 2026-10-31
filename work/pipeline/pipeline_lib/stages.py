@@ -482,6 +482,19 @@ GATE_DEFS = {
         "--rj", ctx.project,
         "--json", os.path.join(d, "lock_coverage.json"),
         "--max-miss", str(int(ctx.cfg.get("lock_max_miss", 0)))]},
+    # 词汇层审计（P2，2026-10-31）：找「看起来是译文、其实是垃圾」的行。
+    # check/empty/trunc/semantic 四道全放过的一类缺陷：整行只剩语气（`だーいすきー`→「哒——！」）、
+    # 音译（`ハイボク`→「嗨波克」）、2 字母拉丁残留（`DS`）。
+    # ⚠️ 现在是**参考项**，只出审校报表不改：实测精度约 54%（302 条里约 160 条是真的），
+    #    误报主要是「拟声/喘息被当实词」。提成硬门禁前必须先清完存量。
+    "lexical": {"hard": False, "cmd": lambda ctx, d: [
+        ctx.py, _script("lexical_audit.py"),
+        # --lrc 要「含 RJ/ 的父目录」；--asr 给 run 目录（自动找 02_asr_fix，退 01_asr）
+        "--lrc", os.path.dirname(final_dir(ctx)),
+        "--asr", ctx.run.dir,
+        "--rj", ctx.project,
+        "--json", os.path.join(d, "lexical_audit.json"),
+        "--md", os.path.join(d, "LEXICAL_AUDIT.md")]},
     # 语义覆盖（P2，2026-10-28）：原文出现的具体物被中文泛化成公文腔
     # （おしっこ→排泄行为、ちんこ→那个部位）时，check/scan/trunc 三道全放过。
     # ⚠️ 现在是**参考项**：loss 档已知 8 条未修（全库 23416 行），
@@ -560,6 +573,12 @@ def _summarize(gate, tail, code, d=""):
             return "%d 条（参考）" % n
         except Exception:
             return "通过" if code == 0 else "失败"
+    if gate == "lexical":
+        m = re.search(r"合计\s*(\d+)\s*行：实词脱落\s*(\d+)\s*/\s*纯省略\s*(\d+)\s*/\s*音译\s*(\d+)\s*/\s*拉丁2\s*(\d+)", tail)
+        if m:
+            return "脱落 %s / 省略 %s / 音译 %s / 拉丁2 %s（参考）" % (
+                m.group(2), m.group(3), m.group(4), m.group(5))
+        return "通过" if code == 0 else "失败"
     if gate == "locks":
         m = re.search(r"合计\s*(\d+)\s*条锁：落地\s*(\d+)\s*/\s*丢失\s*(\d+)", tail)
         if m:
@@ -673,7 +692,7 @@ STAGES = {
         # 漏登记 = 改了代码但指纹不变（R156 的 03 盲区，就是靠 S7 才扫出来的）。
         "code": ["knobs.py", "check.py", "empty_check.py", "scan_violations.py", "errata_audit.py",
                  "test_regressions.py", "repair_overlay.py", "semantic_coverage.py",
-                 "lock_coverage.py",
+                 "lock_coverage.py", "lexical_audit.py",
                  "styleloc.py", "rootloc.py", "asr_halluc.py", "asr_words.py", "cues.py",
                  "polish.py", "pragmatics_hints.py", "translate.py", "entity_ledger.py",
                  "lock_match.py", "mask_nonlexical.py", "term_lock.py"],
