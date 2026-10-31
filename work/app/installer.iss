@@ -13,7 +13,7 @@
 ; 用户仍可在安装向导里改成任意目录（D:\OnseiCraft 之类）。
 
 #define MyAppName "OnseiCraft"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppExeName "OnseiCraft.exe"
 #define BuildDir "..\tmp\pydist\OnseiCraft"
 

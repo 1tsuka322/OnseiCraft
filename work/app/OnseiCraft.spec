@@ -30,7 +30,16 @@ hiddenimports = [
 # 管线脚本是**子进程 runpy 执行**的，PyInstaller 静态分析看不到它们的 import，
 # 必须显式收集，否则 01_asr 一跑就 ModuleNotFoundError。
 for pkg in ("faster_whisper", "ctranslate2", "tokenizers", "huggingface_hub",
-            "onnxruntime", "av", "tqdm", "pypdf", "pdfplumber", "pdfminer"):
+            "onnxruntime", "av", "tqdm", "pypdf", "pdfplumber", "pdfminer",
+            # ⚠️ 下面这些是**管线脚本**用的，不是 GUI 用的。脚本靠 runpy 执行，
+            # PyInstaller 静态分析完全看不到它们的 import —— 漏一个就是
+            # 「跑完 ASR 到 02 才报 ModuleNotFoundError」。实测漏了 7 个，已补齐：
+            #   janome   02 纠错 / refine_glossary / scan_violations / term_mine（含词典 202MB）
+            #   fugashi + unidic_lite  06 lexical_audit 的词性判断（词典 249MB）
+            #   jieba    中文分词（42MB，自带词典）
+            #   rapidfuzz 锁/术语的模糊匹配 · pypinyin 音译判断 · joblib 缓存 · zhconv 繁简
+            "fugashi", "unidic_lite", "janome", "jieba", "joblib",
+            "pypinyin", "rapidfuzz", "zhconv"):
     try:
         d, b, h = collect_all(pkg)
         datas += d
