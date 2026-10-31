@@ -223,14 +223,16 @@ def ja_has_content(ja):
     """
     if not ja or not ja.strip():
         return False
-    if KANJI.search(ja):
-        return True
-    # ⓪ 拟声白名单（`data/style/ono_ja.txt`）—— 人工确认过的，直接放行
+    # ⓪ 拟声白名单（`data/style/ono_ja.txt`）—— 人工确认过的，**最先**放行。
+    # ⚠️ 必须排在「含汉字」之前：`シュッシュッ少しか`/`パイパイで動く` 里带汉字，
+    # 先判汉字就永远走不到白名单（实测这两条一直被误报）。
     ono = _ONO[0]
     if ono is None:
         ono = _ONO[0] = load_ono_ja()
     if ono and _norm_ja(ja) in ono:
         return False
+    if KANJI.search(ja):
+        return True
     # ① 纯重复（`ぎゅぎゅぎゅ`/`くるくるくるくる`/`ねえねえ`/`おうおう`）→ 拟声，不是实词。
     #    fugashi 会把 `ぎゅぎゅぎゅ` 切成名詞，所以这条必须在它**前面**。
     bare = "".join(ch for ch in ja if KANA.match(ch))
