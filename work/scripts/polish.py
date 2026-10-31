@@ -75,6 +75,7 @@ LOCK_JA_HIT = [0]  # 其中「不是按时间戳、而是靠文本/时间锚定�
 LOCK_AMBIG = set()  # 分数太接近、不猜的 (file, ts)
 LOCK_UNMATCHED = set()  # 整轨都找不到落点的锁 (file, ts)
 LOCK_CUE = {}    # {cue_idx: [rec, ...]} 当前轨的锁分配（写盘时按最近时间取用）
+LOCK_DEBUG = [] if os.environ.get("KIKOERU_LOCK_DEBUG") == "1" else None
 LOCK_STAT = {"assign": 0, "unmatched": 0, "ambiguous": 0, "tracks": 0, "detail": {},
              # 逐条落点（key → {how, cue, lock_ts, row_ts, written}）：排查「分配了却没写」
              # 这类静默丢失时，没有这张表就只能靠猜。
@@ -127,6 +128,8 @@ def apply_lock(fn, ts, text, ja="", cue_idx=None, row_times=None):
     """
     if cue_idx is not None:
         recs = LOCK_CUE.get(cue_idx)
+        if LOCK_DEBUG is not None and len(LOCK_DEBUG) < 4000:
+            LOCK_DEBUG.append([cue_idx, len(recs or ()), str(ts), 1 if (text or "").strip() else 0])
         if not recs:
             return text
         t = lock_match.parse_ts(ts)
@@ -136,6 +139,12 @@ def apply_lock(fn, ts, text, ja="", cue_idx=None, row_times=None):
             if d < bd:
                 bi, bd = i, d
         if bi < 0 or bd > lock_match.WINDOW:
+            # 诊断用：记下「这一行为什么没取到锁」（KIKOERU_LOCK_DEBUG=1 才写）
+            if bd <= 1e8 and bi >= 0:
+                _r0 = LOCK_STAT["records"].get("%s|%s" % recs[bi]["key"])
+                if _r0 is not None:
+                    _r0.setdefault("tries", []).append(
+                        {"t": t, "bd": round(bd, 2), "why": "bd>WINDOW"})
             return text
         # ⚠️ 2026-10-31 修：**必须让给更近的那一行**。
         # 以前是「窗口内谁先来谁拿走」（行是按时间顺序遍历的），于是锁的 ts 落在
@@ -146,6 +155,10 @@ def apply_lock(fn, ts, text, ja="", cue_idx=None, row_times=None):
             _mine = bd
             for _ot in row_times:
                 if _ot is not None and abs(recs[bi]["t"] - _ot) < _mine - 1e-6:
+                    _r1 = LOCK_STAT["records"].get("%s|%s" % recs[bi]["key"])
+                    if _r1 is not None:
+                        _r1.setdefault("tries", []).append(
+                            {"t": t, "bd": round(_mine, 2), "why": "让位给%.2f" % _ot})
                     return text
         r = recs.pop(bi)          # 一条锁只落到一行，落完即消费
         _rec = LOCK_STAT["records"].get("%s|%s" % r["key"])
@@ -2882,6 +2895,7 @@ def main():
             "anchored_rows": LOCK_JA_HIT[0],
             "detail": LOCK_STAT["detail"],
             "records": LOCK_STAT["records"],
+            "debug_calls": LOCK_DEBUG,
         }
         json.dump(_doc, open(os.path.join(a.out_dir, "_lock_assign.json"), "w",
                              encoding="utf-8"), ensure_ascii=False, indent=1)
