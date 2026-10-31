@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMainWindow, QMessageBox, QP
 
 from . import pages_tools as T
 from . import pages_wizard as W
-from . import runner as R, settings, theme
+from . import diagnose, runner as R, settings, theme, widgets as Wd
 
 
 class MainWindow(QMainWindow):
@@ -67,6 +67,11 @@ class MainWindow(QMainWindow):
         self.settings.saved.connect(self.home.refresh)
 
         self.job = {}
+        self._last_run = ""
+        self._last_error = ""
+        # 右下角常驻的错误出口（平时隐藏）
+        self.toast = Wd.Toast(self, "运行失败", "导出日志")
+        self.toast.action.connect(self.export_diag)
         self._show(0, "首页")
         QTimer.singleShot(0, self._show_update_notes)
 
@@ -126,10 +131,36 @@ class MainWindow(QMainWindow):
         self.run_page.start(job)
 
     def on_run_finished(self, ok, run_id, msg, lrc_dir):
+        self._last_run = run_id
+        self._last_error = "" if ok else msg
         self.done.show_result(ok, run_id, msg, lrc_dir,
                               self.job.get("project", ""), self.job.get("source", ""))
         self._show(4, "完成")
         self.home.refresh()
+        if ok:
+            self.toast.hide()
+        else:
+            # 右下角常驻一个「导出日志」入口：用户截图说不清环境，日志能
+            self.toast.set_text("运行失败 · 可以导出日志给开发者", "导出日志")
+            self.toast.popup()
+
+    def export_diag(self):
+        """把版本/路径/模型/run 日志/界面日志打包成一个 txt，存到桌面。"""
+        try:
+            text = diagnose.build(run_id=getattr(self, "_last_run", ""),
+                                  error=getattr(self, "_last_error", ""),
+                                  logs=self.run_page.logs,
+                                  job=getattr(self, "job", None))
+            p = diagnose.save(text)
+        except Exception as e:
+            QMessageBox.warning(self, "导出失败", str(e))
+            return
+        self.toast.set_text("日志已保存", "打开所在文件夹")
+        self.toast.action.disconnect()
+        self.toast.action.connect(lambda: Wd.open_path(p))
+        QMessageBox.information(
+            self, "已导出",
+            "诊断日志已保存到：\n%s\n\n直接把这个文件发给开发者即可。" % p)
 
     def go_feedback(self):
         self.feedback.reload()
@@ -141,6 +172,11 @@ class MainWindow(QMainWindow):
 
     def go_settings(self):
         self._show(7, "设置")
+
+    def resizeEvent(self, e):
+        super(MainWindow, self).resizeEvent(e)
+        if hasattr(self, "toast"):
+            self.toast.reposition()
 
     # ---- 更新后的「本次更新内容」 ----
     def _show_update_notes(self):

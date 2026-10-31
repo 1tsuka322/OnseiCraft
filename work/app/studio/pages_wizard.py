@@ -232,6 +232,7 @@ class RunPage(Page):
         super(RunPage, self).__init__("正在生成字幕", "", parent)
         self.runner = None
         self.job = None
+        self.logs = []          # 完整日志，出错时导出诊断包用（界面只显示尾部）
         self.timer = QTimer(self)
         self.timer.setInterval(800)
         self.timer.timeout.connect(self._tick)
@@ -295,6 +296,9 @@ class RunPage(Page):
         self.timer.start()
 
     def _on_log(self, line):
+        self.logs.append(line)
+        if len(self.logs) > 5000:      # 长任务别无限涨
+            del self.logs[:2000]
         self.log.appendPlainText(line)
 
     def _on_stage(self, name, status):

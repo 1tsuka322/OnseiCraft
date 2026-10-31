@@ -253,3 +253,72 @@ def open_path(path):
             os.startfile(os.path.dirname(path))
     except Exception:
         pass
+
+
+class Toast(QWidget):
+    """右下角浮动提示。用于「出错了 → 导出日志」这种需要随手点的动作。
+
+    为什么不用 QMessageBox：模态弹窗会挡住用户本来要做的事，
+    而且关掉之后就没有入口了。这里常驻到用户主动关或下一次成功运行。
+    """
+
+    action = Signal()
+
+    def __init__(self, parent, text, btn_text="导出日志", kind="err"):
+        super(Toast, self).__init__(parent)
+        self.setObjectName("Toast")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self._kind = kind
+        color = theme.ERR if kind == "err" else theme.WARN
+        self.setStyleSheet(
+            "QWidget#Toast{background:%s;border-radius:10px;}"
+            "QLabel#ToastText{color:#FFFFFF;font-size:12px;}"
+            "QPushButton#ToastBtn{background:rgba(255,255,255,0.16);color:#FFFFFF;"
+            "border:none;border-radius:6px;padding:5px 12px;font-size:12px;}"
+            "QPushButton#ToastBtn:hover{background:rgba(255,255,255,0.28);}"
+            "QPushButton#ToastX{background:transparent;color:rgba(255,255,255,0.7);"
+            "border:none;font-size:14px;padding:0 4px;}"
+            "QPushButton#ToastX:hover{color:#FFFFFF;}" % color)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(14, 10, 10, 10)
+        lay.setSpacing(10)
+        lb = QLabel(text)
+        lb.setObjectName("ToastText")
+        lay.addWidget(lb)
+        self.btn = QPushButton(btn_text)
+        self.btn.setObjectName("ToastBtn")
+        self.btn.setCursor(Qt.PointingHandCursor)
+        self.btn.clicked.connect(self.action.emit)
+        lay.addWidget(self.btn)
+        x = QPushButton("×")
+        x.setObjectName("ToastX")
+        x.setCursor(Qt.PointingHandCursor)
+        x.setFixedWidth(22)
+        x.clicked.connect(self.hide)
+        lay.addWidget(x)
+
+        self.adjustSize()
+        self.hide()
+
+    def set_text(self, text, btn_text=None):
+        lb = self.findChild(QLabel, "ToastText")
+        if lb:
+            lb.setText(text)
+        if btn_text:
+            self.btn.setText(btn_text)
+        self.adjustSize()
+        self.reposition()
+
+    def popup(self):
+        self.adjustSize()
+        self.reposition()
+        self.show()
+        self.raise_()
+
+    def reposition(self):
+        p = self.parentWidget()
+        if not p:
+            return
+        self.move(max(8, p.width() - self.width() - 22),
+                  max(8, p.height() - self.height() - 22))
