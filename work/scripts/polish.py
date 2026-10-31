@@ -2717,7 +2717,12 @@ def main():
                     # 只去 **cue 内** 的重复：跨 cue 去掉会让那个 cue 一行都不剩，
                     # 触发下面 `keep < len(lines)` 的硬门禁。
                     _prev_tx = None
-                    _row_ts = [lock_match.parse_ts(fmt_lrc(x[0])) for x in _out]
+                    # ⚠️ 只统计**会真正接收锁**的行：空文本是清屏 spacer，
+                    # 写盘循环里 `if _tx:` 才调 apply_lock，spacer 永远拿不走锁。
+                    # 把它们算进「更近的行」会让锁被让给一个空行 → 静默丢失
+                    # （RJ377265 实测：锁的 ts 落在 spacer 上时整条锁消失）。
+                    _row_ts = [lock_match.parse_ts(fmt_lrc(x[0]))
+                               for x in _out if (x[1] or "").strip()]
                     for _t, _tx in _out:
                         if _tx:
                             # E1：句级锁定（人工修正逐字保留，不因重跑丢失）

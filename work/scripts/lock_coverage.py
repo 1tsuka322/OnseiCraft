@@ -98,6 +98,10 @@ def audit_one(rj, lrc_root):
         if txt is None:
             unreadable.append({"key": k, "why": "成品里没有这一轨"})
             continue
+        # ⚠️ 不做「去说话人前缀」的宽容匹配：`甘：`/`白：` 是**台本的角色归属**，
+        # 属于内容而不是格式。锁里有、成品里没有 = 真的丢了，必须如实报出来。
+        # （2026-10-31 一度按「格式开关」去剥，被用户当场纠正——那会静默删掉
+        #  人工锁里的说话人标签。）
         if z in txt:
             landed.append(k)
         else:
