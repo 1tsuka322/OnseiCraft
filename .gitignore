@@ -24,6 +24,8 @@ kikoerusubtitle_rec/
 data/
 # 平行语料/术语表/句级锁：不随仓库分发
 assets/
+# 例外：Studio 的图标要进库（上面这条会匹配任意层级的 assets/）
+!work/app/studio/assets/
 # 运行产物
 runs/
 regset/
