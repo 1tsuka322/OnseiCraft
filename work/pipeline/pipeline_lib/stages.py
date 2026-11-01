@@ -50,6 +50,10 @@ class Ctx(object):
             self.env["KIKOERU_SPK_PREFIX"] = "1"
         if cfg.get("track_memory"):
             self.env["KIKOERU_TRACK_MEMORY"] = "1"
+        asr_m = cfg.get("asr_model") or (cfg.get("models") or {}).get("asr_model")
+        if asr_m:
+            self.env["FW_MODEL"] = str(asr_m)
+            self.env["KIKOERU_ASR_MODEL"] = str(asr_m)
 
     def dir(self, stage, sub=""):
         d = os.path.join(self.run.stage_dir(stage), self.project, sub) if sub \

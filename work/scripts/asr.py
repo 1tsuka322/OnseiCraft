@@ -25,7 +25,36 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import asr_halluc  # noqa: E402  三门槛幻觉判据（词级时间戳），与 asr.py 同目录
 
-MODEL = os.environ.get("FW_MODEL", r"D:\fasterwhisperGUI-0.8.5.sfx\models\faster-whisper-large-v3")
+def resolve_asr_model():
+    """解析 ASR 模型路径或规格名称（优先级：环境变量 -> pipeline 配置 -> 默认相对目录 -> 官方模型名）。"""
+    for key in ("FW_MODEL", "KIKOERU_ASR_MODEL"):
+        val = (os.environ.get(key) or "").strip()
+        if val:
+            return val
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.environ.get("KIKOERU_ROOT", os.path.dirname(here))
+    cfg_p = os.environ.get("KIKOERU_CONFIG") or os.path.join(root, "pipeline", "pipeline.json")
+    for cp in (cfg_p, os.path.join(os.path.dirname(cfg_p), "pipeline.local.json")):
+        if os.path.isfile(cp):
+            try:
+                with open(cp, encoding="utf-8") as f:
+                    d = json.load(f) or {}
+                m = (d.get("asr_model") or (d.get("models") or {}).get("asr_model") or "").strip()
+                if m:
+                    return m
+            except Exception:
+                pass
+
+    for base in (root, os.path.dirname(root)):
+        cand = os.path.join(base, "models", "faster-whisper-large-v3")
+        if os.path.isdir(cand):
+            return cand
+
+    return "large-v3"
+
+
+MODEL = resolve_asr_model()
 AUDIO_EXTS = ["wav", "mp3", "m4a", "flac", "ogg", "opus", "aac", "wma"]
 
 # 分块识别参数（见 SKILL.md：整轨识别会让低语段大面积丢失）
