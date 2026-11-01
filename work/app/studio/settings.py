@@ -82,6 +82,10 @@ def apply_env(cfg=None):
     os.makedirs(cfg["prod_dir"], exist_ok=True)
     for d in (cfg["import_dir"], cfg["asr_cache_dir"], cfg["feedback_dir"]):
         os.makedirs(d, exist_ok=True)
+    asr_m = get_model("asr_model")
+    if asr_m:
+        os.environ["FW_MODEL"] = str(asr_m)
+        os.environ["KIKOERU_ASR_MODEL"] = str(asr_m)
     return cfg
 
 
@@ -113,6 +117,9 @@ def set_model(key, value):
     d.setdefault("models", {})
     if key == "asr_model":
         d["asr_model"] = value
+        if value:
+            os.environ["FW_MODEL"] = str(value)
+            os.environ["KIKOERU_ASR_MODEL"] = str(value)
     else:
         d.setdefault("models", {})[key] = value
     save_local(d)

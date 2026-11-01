@@ -33,7 +33,7 @@ from faster_whisper import WhisperModel           # noqa: E402
 from faster_whisper.audio import decode_audio     # noqa: E402
 
 ROOT = os.environ.get("KIKOERU_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MODEL = os.environ.get("FW_MODEL", r"D:\fasterwhisperGUI-0.8.5.sfx\models\faster-whisper-large-v3")
+MODEL = os.environ.get("FW_MODEL", getattr(A, "MODEL", "large-v3"))
 
 
 def load_json(p):

@@ -267,10 +267,9 @@ def main():
 
     from faster_whisper import WhisperModel
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from asr import is_hallucination, is_freetalk
+    from asr import is_hallucination, is_freetalk, MODEL as _DEFAULT_MODEL
 
-    MODEL = os.environ.get(
-        "FW_MODEL", r"D:\fasterwhisperGUI-0.8.5.sfx\models\faster-whisper-large-v3")
+    MODEL = os.environ.get("FW_MODEL", _DEFAULT_MODEL)
     HERE = os.path.dirname(os.path.abspath(__file__))
     TMP = os.path.abspath(os.path.join(HERE, "..", "..", "..", "tmp", "rescan_head"))
     src_dir = os.path.join(TMP, "src")
