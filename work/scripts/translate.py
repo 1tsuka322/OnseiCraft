@@ -419,6 +419,16 @@ _SRC_LATIN = re.compile(r"[A-Za-z]{3,}")
 # 语气/拟声字：只有这些字连续重复才算「复读退化」
 FILLER_CHARS = set("嗯啊哈呜唔呼噢哦呃唉呀哎咦诶嘿嘛呐")
 
+
+def _digitish(s):
+    """整行去标点空白后**只剩数字**（倒计时 `98` / `2 1 0` / `10 9`）。
+
+    C-006（2026-11-05）：这类行是**正确译文**，不是「模型没产出内容」。
+    判据必须两边都成立（见 `_sakura_bad` 的 nolang 分支）。
+    """
+    t = _STRIP.sub("", s or "")
+    return bool(t) and bool(re.fullmatch(r"[0-9０-９]+", t))
+
 # ---- 「这句是不是非词汇音」的三层机械漏斗（2026-10-28 R154）----
 # 不用模型（8GB 显存要留给 LLM），纯字符串判断。
 # 第一层「全假名无汉字」太粗：`いいよ`/`だめ`/`やめて`/`すき` 都是全假名实词，
@@ -633,12 +643,19 @@ def _sakura_bad(zh, ja):
         return why, _nonlexical(ja)
     # 整行没有一个中日文字（只剩标点/空格）→ 这是模型没产出内容，不是译文
     if zh and not re.search(r"[\u4e00-\u9fff\u3040-\u30ff]", zh):
-        # 例外：源语本身就是**片假名外来词**（`オッケー。`），Sakura 译成 `OK。` 是对的，
+        # 例外 1：源语本身就是**片假名外来词**（`オッケー。`），Sakura 译成 `OK。` 是对的，
         # 不能因为「译文里没有中日文字」就判 nolang。实测 RJ1234441 轨02
         # 把 `オッケー。` 兜底成「…」，虽然后面两句译出来了，但开头被吞。
         if re.fullmatch(r"[A-Za-z]{1,6}",
                         _STRIP.sub("", zh or "")) and \
                 re.fullmatch(r"[\u30a0-\u30ff]{1,12}", _STRIP_JA.sub("", ja or "")):
+            return "", False
+        # 例外 2（2026-11-05，C-006）：**倒计时/报数**。原文本来就是纯数字
+        # （`98` / `45 入り込んでいく 44` / `2 1 0`），正确译文也只能是数字。
+        # 以前一律判 nolang → 整行变「…」。实测 RJ416816 倒计时轨 **17/17 全灭**；
+        # 全库 17 部里这类行有 95 条（RJ377265 一部 74 条）。
+        # 判据必须**两边都是数字**：只放行 zh 是数字会让「原文是台词、译文吐了个 123」也过关。
+        if _digitish(ja) and _digitish(zh):
             return "", False
         return "nolang", _nonlexical(ja)
     jn = len(_STRIP.sub("", ja or ""))
