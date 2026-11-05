@@ -25,12 +25,27 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import asr_halluc  # noqa: E402  三门槛幻觉判据（词级时间戳），与 asr.py 同目录
 
-def resolve_asr_model():
-    """解析 ASR 模型路径或规格名称（优先级：环境变量 -> pipeline 配置 -> 默认相对目录 -> 官方模型名）。"""
+def resolve_asr_model(explicit=None):
+    """解析 ASR 模型：返回 (值, 来源)。值可以是**本地目录**或 faster-whisper 的**规格名**。
+
+    优先级：`--model` → FW_MODEL → KIKOERU_ASR_MODEL → pipeline.json → pipeline.local.json
+            → `<root>/models/faster-whisper-large-v3` → 规格名 "large-v3"（让 faster-whisper 自己下）。
+
+    ⚠️ 2026-11-01 用户报错（OnseiCraft 0.1.3）：这里原来是
+    `os.environ.get("FW_MODEL", r"D:\\fasterwhisperGUI-0.8.5.sfx\\models\\...")`——
+    **开发机的绝对路径当默认值**，换台机器就指向不存在的目录，faster-whisper 抛
+    `ValueError: Invalid model size 'D:\\fasterwhisperGUI-...'`。
+    更糟的是它**绕过了配置**：界面里 asr_model 明明填对了（诊断报告显示 OK），
+    实际用的还是那个写死的路径 —— 又一次「声明 ≠ 实际」。
+    现在只认配置与环境变量，并且把「值从哪来」一起返回，好写进日志。
+    """
+    cands = []
+    if explicit:
+        cands.append(("--model", explicit))
     for key in ("FW_MODEL", "KIKOERU_ASR_MODEL"):
         val = (os.environ.get(key) or "").strip()
         if val:
-            return val
+            cands.append((key, val))
 
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.environ.get("KIKOERU_ROOT", os.path.dirname(here))
@@ -42,19 +57,51 @@ def resolve_asr_model():
                     d = json.load(f) or {}
                 m = (d.get("asr_model") or (d.get("models") or {}).get("asr_model") or "").strip()
                 if m:
-                    return m
+                    cands.append((os.path.basename(cp), m))
             except Exception:
                 pass
 
     for base in (root, os.path.dirname(root)):
         cand = os.path.join(base, "models", "faster-whisper-large-v3")
         if os.path.isdir(cand):
-            return cand
+            cands.append(("默认相对目录", cand))
 
-    return "large-v3"
+    if cands:
+        return cands[0][1], cands[0][0]
+    return "large-v3", "内置规格名（faster-whisper 自行下载）"
 
 
-MODEL = resolve_asr_model()
+def _looks_like_path(s):
+    return ("/" in s) or ("\\" in s) or bool(re.match(r"^[A-Za-z]:", s))
+
+
+def check_asr_model(model, source):
+    """路径形态的模型必须真的可用，否则**说人话**退出，别让 faster-whisper 抛那句天书。
+
+    这条是「声明 == 实际」的检查点：配置说用 A，就必须真能用 A；
+    不能用就立刻停，而不是悄悄回落到别的模型（那会产出「看着正常、其实换了模型」的成品）。
+    """
+    if not _looks_like_path(model):
+        return                                  # 规格名（large-v3 等）交给 faster-whisper
+    if not os.path.isdir(model):
+        raise SystemExit(
+            "ASR 模型目录不存在：%s\n"
+            "  来源：%s\n"
+            "  → 修法（任选一条）：\n"
+            "     1) 打开 OnseiCraft → 设置 → 「语音识别模型」选到 faster-whisper-large-v3 目录\n"
+            "     2) 在 work/pipeline/pipeline.local.json 里写 \"asr_model\": \"<模型目录>\"\n"
+            "     3) 设环境变量 FW_MODEL=<模型目录>\n"
+            "  该目录里应有 model.bin / config.json / tokenizer.json / vocabulary.json"
+            % (model, source))
+    if not os.path.isfile(os.path.join(model, "model.bin")):
+        raise SystemExit(
+            "ASR 模型目录缺 model.bin：%s\n"
+            "  来源：%s\n"
+            "  → 目录选对了但没下完，或选到了上一级。请重新下载/解压 faster-whisper-large-v3。"
+            % (model, source))
+
+
+MODEL, MODEL_SRC = resolve_asr_model()
 AUDIO_EXTS = ["wav", "mp3", "m4a", "flac", "ogg", "opus", "aac", "wma"]
 
 # 分块识别参数（见 SKILL.md：整轨识别会让低语段大面积丢失）
@@ -383,10 +430,13 @@ def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", facto
 
 
 def main():
+    global MODEL, MODEL_SRC
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
     ap.add_argument("out")
     ap.add_argument("ext", nargs="?", default="auto")
+    ap.add_argument("--model", default=None,
+                    help="faster-whisper 模型目录或规格名（默认按 环境变量 → pipeline 配置 解析）")
     ap.add_argument("--recursive", action="store_true")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--compute", default="float16")
@@ -400,6 +450,11 @@ def main():
     ap.add_argument("--overlap", type=float, default=CHUNK_OV, help="分块模式下的重叠秒数")
     a = ap.parse_args()
 
+    if a.model:
+        MODEL, MODEL_SRC = a.model, "--model"
+    # 先用后不校验 = 报错在 faster-whisper 里，用户只看到 "Invalid model size"。
+    check_asr_model(MODEL, MODEL_SRC)
+
     os.makedirs(a.out, exist_ok=True)
     files = collect(a.src, a.ext, a.recursive)
     if not files:
@@ -407,7 +462,11 @@ def main():
         sys.exit(1)
 
     from faster_whisper import WhisperModel
-    print("加载模型 large-v3 (%s / %s) ..." % (a.device, a.compute), flush=True)
+    # 别写死 large-v3：换模型（moss / 微调版 / 别的规格名）时日志要能对上，
+    # 否则「声明 == 实际」在日志层面就已经撒谎了。
+    print("加载模型 %s（来源 %s）(%s / %s) ..."
+          % (os.path.basename(os.path.normpath(MODEL)) if _looks_like_path(MODEL) else MODEL,
+             MODEL_SRC, a.device, a.compute), flush=True)
     model = WhisperModel(MODEL, device=a.device, compute_type=a.compute)
     print("就绪，共 %d 个文件\n" % len(files), flush=True)
 

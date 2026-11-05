@@ -26,6 +26,10 @@ CONFIG_KEYS = ("engine", "cue_pipeline", "slots", "system_mode", "allow_loss",
                "diarize", "diarize_thr", "seg_flush_chars", "chunk")
 
 # 模型路径常量（抄自 serve.py；不 import 它，避免副作用）
+# ⚠️ 下面这些是**开发机的路径**，只当兜底默认值：真正的值由 pipeline.local.json 的
+#    `models.*` 给（load_config 会深合并进来）。别的机器上这些默认值一律 exists=False，
+#    于是「换 Sakura 模型不触发 03 重算」——正是 R156 那类盲区。取的时候先看配置。
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GGUF = {
     # 默认引擎（2026-10-29 起 engine=sakura）。以前漏登记 → 换 Sakura 模型文件不会触发 03 重算，
     # 而 03 的 manifest 里 server_model 只记录、不进哈希（R156 链路验证的盲区之一）。
@@ -130,6 +134,27 @@ def _stat(path):
     return rec
 
 
+def _asr_model_path(cfg):
+    """ASR 模型的**实际**路径（与 scripts/asr.py 的 resolve_asr_model 同序）。
+
+    ⚠️ 原来这里写死 `{"name": "faster-whisper-large-v3", "path": None, "exists": True}`
+    —— 等于宣称「whisper 一定在、且永远是同一个」，**换模型不会让 01 失效**。
+    2026-11-01 用户报错暴露了同一个洞的另一半：asr.py 用的是写死的开发机路径，
+    而指纹里那条 whisper 永远是「存在」，所以「配置说 A、实际跑 B」谁都没发现。
+    现在按 asr.py 的解析顺序取路径，路径变了 / 大小变了 / mtime 变了 → 01 必然重算。
+    """
+    p = (cfg or {}).get("asr_model") or ((cfg or {}).get("models") or {}).get("asr_model")
+    if not p:
+        for k in ("FW_MODEL", "KIKOERU_ASR_MODEL"):
+            p = (os.environ.get(k) or "").strip()
+            if p:
+                break
+    if not p:
+        cand = os.path.join(_ROOT, "models", WHISPER_NAME)
+        p = cand if os.path.isdir(cand) else ""
+    return str(p or "")
+
+
 def model_records(cfg, stage=None):
     """模型指纹：{逻辑名: {path, exists, bytes, mtime}}。stage 给了就只取该阶段用到的。"""
     names = MODELS_BY_STAGE.get(stage) if stage else None
@@ -137,11 +162,19 @@ def model_records(cfg, stage=None):
     if names == []:
         return out          # 该阶段不调模型（02/05/06）—— 指纹里不该出现任何 gguf
     if names is None or "whisper" in names:
-        out["whisper"] = {"name": WHISPER_NAME, "path": None, "exists": True,
-                          "bytes": None, "mtime": None}
+        ap = _asr_model_path(cfg)
+        if ap and (os.sep in ap or "/" in ap or "\\" in ap):
+            rec = _stat(ap)
+            rec["name"] = WHISPER_NAME
+            out["whisper"] = rec
+        else:
+            # 规格名（large-v3）：模型在 HF 缓存里，路径不可知 → 只记名字，
+            # 但**必须记成「未知」而不是「存在」**，别让指纹替模型打包票。
+            out["whisper"] = {"name": ap or WHISPER_NAME, "path": None,
+                              "exists": None, "bytes": None, "mtime": None}
     for k, p in GGUF.items():
         if names is None or k in names:
-            out[k] = _stat(p)
+            out[k] = _stat(((cfg or {}).get("models") or {}).get(k) or p)
     return out
 
 

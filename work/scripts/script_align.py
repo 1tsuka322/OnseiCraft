@@ -321,6 +321,12 @@ def main():
     tot_rate = []
     dial_rates = []
     queue = []                # E5：逐句低置信对齐清单（待复核）
+    # ⚠️ 2026-11-01 用户报错：音频叫 `含效果音.mp3`（没有轨号），台本只有 1 轨
+    #    （112 句）→ track_no 返回 None → 「跳过（台本没有这一轨）」→ 0 轨 →
+    #    01 门禁 {"ok": false, "tracks": 0} → **整部作品一个字都不输出**。
+    #    这是「台本是可选增强」被实现成「台本对不上就全灭」。
+    #    单台本 + 单音轨时根本不存在歧义，直接配对。
+    only_key = next(iter(script)) if len(script) == 1 else None
     for ref in refs:
         # ⚠️ 2026-10-21：source 必须是**音频名**（`X.mp3`），不能带 `.json`。
         #    原来直接 basename(ref) 把 `X.mp3.json` 写进 source，下游 polish 用它
@@ -330,6 +336,10 @@ def main():
         key = os.path.splitext(base)[0]
         no = track_no(base)
         sents = script.get(no) if no is not None else None
+        if not sents and only_key is not None and len(refs) == 1:
+            # 唯一台本 + 唯一音轨：不猜轨号，直接配对（并在日志里说清楚，别静默）
+            sents = script.get(only_key)
+            print("  单台本单音轨直接配对（音轨名无轨号）：%s" % base[:46])
         if not sents:
             print("  跳过（台本没有这一轨）：%s" % base[:46])
             n_miss += 1

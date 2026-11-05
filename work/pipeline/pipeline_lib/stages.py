@@ -222,6 +222,70 @@ def _ensure_server(ctx, model=None, stage="03_translate"):
 
 
 # ---------------------------------------------------------------- 各阶段
+def _asr_model_label(ctx):
+    """manifest 里记的 ASR 模型名：取实际解析到的那个（目录名 / 规格名）。
+
+    与 scripts/asr.py 的解析顺序一致（--model 即 cfg.asr_model，优先）。
+    """
+    p = ctx.cfg.get("asr_model") or (ctx.cfg.get("models") or {}).get("asr_model") or ""
+    p = str(p).strip()
+    if not p:
+        for k in ("FW_MODEL", "KIKOERU_ASR_MODEL"):
+            p = (os.environ.get(k) or "").strip()
+            if p:
+                break
+    if not p:
+        return "large-v3"
+    return os.path.basename(os.path.normpath(p)) or p
+
+
+def _fill_missing_from_raw(ctx, raw, asr):
+    """台本没覆盖到的轨，用 raw ASR 补上——**台本是增强，不是前置条件**。
+
+    ⚠️ 2026-11-01 用户报错（OnseiCraft 0.1.3，RJ911012206）：
+    音频叫 `含效果音.mp3`（无轨号），台本只有 1 轨 → script_align 全跳过 →
+    `01_asr/asr/` 里 0 个 json → 门禁 `{"ok": false, "tracks": 0}` → **整部作品一个字不输出**。
+    用户的感受是「ASR 对不上台本就不输出」，实际是「可选增强失败 → 全灭」。
+
+    同一类坑还有更坏的一半：**部分**跳过是**静默**的——被跳过那几轨不进 asr/，
+    03 起就没人再提，成品直接少几轨，而 01 门禁只看「tracks > 0」，照样过。
+    所以这里逐轨核对：对齐结果缺失（或 segments 为空）就用 raw 顶上，并写进日志。
+    只补不删：已对齐的轨保留台本版（时间轴比 ASR 准）。
+    """
+    srcs = sorted(glob.glob(os.path.join(raw, "*.json")))
+    if not srcs:
+        return []
+    # ⚠️ 比对**必须按 `source`（音频名），不能按文件名**：
+    #    asr.py 写 `含效果音.mp3.json`，script_align 写 `含效果音.json`
+    #    （它把 `.mp3` 当扩展名剥掉了）。按文件名比 → 永远「没覆盖」→ 每条轨复制两份
+    #    → 03 把同一轨翻两遍 → 成品里出现重复字幕。实测踩到过（2026-11-01）。
+    covered = set()
+    for p in sorted(glob.glob(os.path.join(asr, "*.json"))):
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(d, dict) and d.get("segments"):
+            covered.add(d.get("source") or os.path.basename(p))
+    filled = []
+    for p in srcs:
+        try:
+            rawd = json.load(open(p, encoding="utf-8"))
+        except Exception:
+            continue
+        src_name = (rawd.get("source") if isinstance(rawd, dict) else None) \
+            or os.path.basename(p)
+        if src_name in covered or os.path.basename(p) in covered:
+            continue
+        shutil.copy2(p, os.path.join(asr, os.path.basename(p)))
+        filled.append(os.path.basename(p))
+    if filled:
+        head = "、".join(f[:24] for f in filled[:4]) + ("…" if len(filled) > 4 else "")
+        print("[01_asr] ⚠️ 台本未覆盖 %d/%d 轨 → 回退 ASR 原版（不丢轨）：%s"
+              % (len(filled), len(srcs), head), flush=True)
+    return filled
+
+
 def stage_asr(ctx):
     asr = ctx.asr_dir()
     raw = ctx.asr_raw_dir()
@@ -230,6 +294,12 @@ def stage_asr(ctx):
     cmd = [ctx.py, _script("asr.py"), ctx.source, target, ext,
            "--device", ctx.cfg.get("device", "cuda"),
            "--compute", ctx.cfg.get("compute", "float16")]
+    # 模型路径**显式写在命令行上**（同时也进了 env，两条都留）：
+    # 日志里那行 `$ ... asr.py ...` 是排障第一现场，2026-11-01 用户报错时
+    # 从这行完全看不出实际用哪个模型 —— 只看到 `ValueError: Invalid model size 'D:\fasterwhisperGUI-...'`。
+    asr_model = ctx.cfg.get("asr_model") or (ctx.cfg.get("models") or {}).get("asr_model")
+    if asr_model:
+        cmd += ["--model", str(asr_model)]
     if ctx.cfg.get("recursive"):
         cmd.append("--recursive")
     if ctx.dry:
@@ -239,11 +309,21 @@ def stage_asr(ctx):
         code, tail, dur = _tee(cmd, ctx.log("01_asr", "asr.log"), env=ctx.env)
     if code != 0:
         raise RuntimeError("asr.py 退出码 %d" % code)
+    fallback = []
+    align_failed = False
     if ctx.script_dir:
         code, tail2, _ = _tee([ctx.py, _script("script_align.py"), ctx.script_dir,
                                raw, asr], ctx.log("01_asr", "script_align.log"), env=ctx.env)
         if code != 0:
-            raise RuntimeError("script_align.py 退出码 %d" % code)
+            # ⚠️ 台本是**可选增强**，对齐失败不能把整部作品拦死。
+            # 2026-11-01 用户报错就是这一条：台本没有轨号 / 音轨名没有轨号 →
+            # script_align 要么全跳过、要么直接 SystemExit → 01 门禁 tracks=0 → 一个字不输出。
+            # 现在：喊一声 + 回退 raw ASR 照常出片，并把「这部没打轴」记进 manifest。
+            align_failed = True
+            print("[01_asr] ⚠️ 台本对齐失败（退出码 %d）→ 回退 ASR 原版，照常出片" % code,
+                  flush=True)
+            print("       原因见 %s" % ctx.log("01_asr", "script_align.log"), flush=True)
+        fallback = _fill_missing_from_raw(ctx, raw, asr)
     elif ctx.cfg.get("diarize"):
         dia = os.path.join(paths.ROOT, "data", "skills", "kikoeru-style-learn",
                            "scripts", "diarize.py")
@@ -266,9 +346,16 @@ def stage_asr(ctx):
         if code3 != 0:
             print("⚠️ asr_latin_halluc 退出码 %d（不影响主流程）" % code3, flush=True)
     n = len(glob.glob(os.path.join(asr, "*.json")))
+    # 台本没覆盖的轨（已回退 raw）也记进 manifest：这是「交付口径 ≠ 台本口径」的证据，
+    # 事后要能回答「这部为什么有轨没打轴」。
+    extra = {"tracks": n, "duration_tool_sec": dur}
+    if fallback:
+        extra["script_fallback_tracks"] = fallback
+    if align_failed:
+        extra["script_align_failed"] = True
     return {"outputs": [manifest.dir_rec(asr, "*.json")],
             "gate": {"ok": n > 0, "tracks": n},
-            "extra": {"tracks": n, "duration_tool_sec": dur}}
+            "extra": extra}
 
 
 def stage_asr_fix(ctx):
@@ -622,7 +709,12 @@ STAGES = {
                                "compute": ctx.cfg.get("compute"),
                                "script": bool(ctx.script_dir),
                                "diarize": bool(ctx.cfg.get("diarize")) and not ctx.script_dir,
-                               "model": "faster-whisper-large-v3"},
+                               # ⚠️ 以前写死 "faster-whisper-large-v3"。换模型（moss / 微调版 /
+                               # 另一个 whisper 目录）时 manifest 还在说旧名字 —— 又一次
+                               # 「声明 ≠ 实际」。改成取配置里那个目录的 basename；
+                               # 本机（faster-whisper-large-v3 目录）与旧值逐字相同，
+                               # 所以历史 run 的 params 不变，restamp 时不会因此多一条差异。
+                               "model": _asr_model_label(ctx)},
         "inputs": lambda ctx: [_src_rec(ctx)],
     },
     "02_asr_fix": {
