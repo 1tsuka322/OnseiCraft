@@ -438,6 +438,35 @@ def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", facto
     return ded, total
 
 
+def _can_reuse(path, model_tag, a):
+    """旧 json 能不能当「当前配置的产物」复用。返回 (能否复用, 原因)。
+
+    ⚠️ 2026-11-06：以前只看文件存不存在。换模型重跑 01 时 asr.py 6 轨全跳过，
+    阶段 7 秒"成功"、manifest 被写成新模型、产物还是 9 天前的旧 json，
+    而 acceptance 拿刚写进去的指纹和当前代码比 → 必然相等 → 全绿。
+    现在比对 asr_meta（产出参数）；**没有 asr_meta 的旧文件一律不复用**
+    —— 宁可贵一次真跑，也不要再出现"声称跑了其实没跑"。
+    """
+    try:
+        d = json.load(open(path, encoding="utf-8"))
+    except Exception as e:
+        return False, "读不出来（%s）" % str(e)[:40]
+    if d.get("error"):
+        return False, "上次识别失败（%s）" % str(d["error"])[:40]
+    m = d.get("asr_meta") or {}
+    if not m:
+        return False, "旧产物没记产出参数"
+    if m.get("model") != model_tag:
+        return False, "模型不同：%s ≠ %s" % (m.get("model"), model_tag)
+    if m.get("compute") != a.compute:
+        return False, "精度不同：%s ≠ %s" % (m.get("compute"), a.compute)
+    if bool(m.get("vad")) != bool(a.vad):
+        return False, "VAD 开关不同"
+    if bool(m.get("chunked")) != bool(a.chunked):
+        return False, "分块模式不同"
+    return True, ""
+
+
 def main():
     global MODEL, MODEL_SRC
     ap = argparse.ArgumentParser()
@@ -478,9 +507,10 @@ def main():
     from faster_whisper import WhisperModel
     # 别写死 large-v3：换模型（moss / 微调版 / 别的规格名）时日志要能对上，
     # 否则「声明 == 实际」在日志层面就已经撒谎了。
+    MODEL_TAG = (os.path.basename(os.path.normpath(MODEL))
+                 if _looks_like_path(MODEL) else MODEL)
     print("加载模型 %s（来源 %s）(%s / %s) ..."
-          % (os.path.basename(os.path.normpath(MODEL)) if _looks_like_path(MODEL) else MODEL,
-             MODEL_SRC, a.device, a.compute), flush=True)
+          % (MODEL_TAG, MODEL_SRC, a.device, a.compute), flush=True)
     model = WhisperModel(MODEL, device=a.device, compute_type=a.compute)
     print("就绪，共 %d 个文件\n" % len(files), flush=True)
 
@@ -490,9 +520,13 @@ def main():
         name = os.path.basename(path)
         out_path = os.path.join(a.out, name + ".json")
         if os.path.exists(out_path) and not a.redo:
-            print("[%d/%d] 跳过（已有结果，加 --redo 可强制重跑）%s" % (idx, len(files), name),
+            _ok, _why = _can_reuse(out_path, MODEL_TAG, a)
+            if _ok:
+                print("[%d/%d] 跳过（产出参数一致，合法复用）%s" % (idx, len(files), name),
+                      flush=True)
+                continue
+            print("[%d/%d] 旧产物不可复用（%s）→ 重跑 %s" % (idx, len(files), _why, name),
                   flush=True)
-            continue
         t0 = time.time()
         print("[%d/%d] 识别中: %s" % (idx, len(files), name), flush=True)
         dropped = []
@@ -568,6 +602,14 @@ def main():
         meta = {"source": name, "language": "ja",
                 "duration": round(dur, 1), "container_duration": round(est, 1),
                 "truncated": truncated, "coverage": round(cov, 1), "segments": data}
+        # ---- 产出参数（2026-11-06）----
+        # 以前 json 里**不记模型**，于是「json 存在就跳过」无法判断旧产物是不是
+        # 当前配置产生的 —— 换模型后重跑会静默复用旧文本（假绿的根因之一）。
+        # 记下来之后，跳过判断就能做「参数一致才复用」，这是**合法复用**而不是漏跑。
+        meta["asr_meta"] = {"model": MODEL_TAG, "model_src": MODEL_SRC,
+                            "device": a.device, "compute": a.compute,
+                            "vad": bool(a.vad), "chunked": bool(a.chunked),
+                            "chunk_sec": a.chunk if a.chunked else None}
         if dropped:
             meta["dropped_halluc"] = [{"start": st, "kind": k, "text": t}
                                       for st, t, k in dropped]

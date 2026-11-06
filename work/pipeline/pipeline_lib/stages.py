@@ -323,6 +323,20 @@ def stage_asr(ctx):
         code, tail, dur = _tee(cmd, ctx.log("01_asr", "asr.log"), env=ctx.env)
     if code != 0:
         raise RuntimeError("asr.py 退出码 %d" % code)
+    # ---- 产物完整性对账（2026-11-06，GPT「成功提交边界」）----
+    # asr.py 单轨失败时是 `continue`，**退出码仍是 0** —— 阶段会被记成 ok。
+    # 所以「成功」必须由调用方核对集合，而不是信退出码。
+    _AUD = (".mp3", ".wav", ".flac", ".m4a", ".ogg", ".opus", ".aac", ".wma")
+    try:
+        _ins = [f for f in os.listdir(ctx.source) if f.lower().endswith(_AUD)]
+    except Exception:
+        _ins = []
+    _outs = glob.glob(os.path.join(target, "*.json"))
+    if _ins and len(_outs) < len(_ins):
+        raise RuntimeError(
+            "01_asr 产出不完整：%d 个 json / %d 个输入音频（缺 %d 轨）—— "
+            "asr.py 单轨失败时退出码仍是 0，这里必须拦下"
+            % (len(_outs), len(_ins), len(_ins) - len(_outs)))
     fallback = []
     align_failed = False
     if ctx.script_dir:
