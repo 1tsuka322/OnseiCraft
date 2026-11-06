@@ -901,12 +901,26 @@ def execute(run, name, cfg, force=False, dry=False):
     reason = "强制重跑" if force else _miss_reason(prev, fp, params, inputs, know, code,
                                                  models=models)
     print("\n[%s] ▶ %s%s" % (name, desc, "" if dry else "（%s）" % reason))
+    # 知识包身份（2026-11-06，GPT 议题 3）：manifest 只记 sha256/exists 时，
+    # 「用 34 条 presets」和「用 138 条私有表」在验收层面**无法区分**。
+    # 记下来源类型 + identity（跨机可比）+ 哪些能力因缺表而未启用；路径只作本地诊断。
+    try:
+        import styleloc as _SL
+        _kp = _SL.resolve()
+        _kp_rec = {"identity": _kp["identity"], "source_type": _kp["source_type"],
+                   "source_path": _kp["source_path"],
+                   "n_tables": len(_kp["tables"]),
+                   "missing_required": _kp["missing_required"],
+                   "disabled": _kp["disabled"]}
+    except Exception as _e:
+        _kp_rec = {"error": str(_e)[:120]}
     run.begin_stage(name, params, inputs, know, code, cache_miss_reason=reason,
                     fp=fp,
                     extra={"config_hash": FP.config_hash(ctx.cfg),
                            "env": FP.env_whitelist(ctx.cfg),
                            "runner": FP.runner_hash(),
-                           "models": models})
+                           "models": models,
+                           "knowledge_package": _kp_rec})
     try:
         res = spec["run"](ctx)
     except Exception as e:

@@ -196,19 +196,31 @@ class Run(object):
         从结构上消灭「两个地方各算一份」的可能。
         """
         fp = fp if fp else fingerprint(name, params, inputs, knowledge, code)
+        prev = self.data["stages"].get(name) or {}
+        _t0 = now()
         st = {
             "name": name,
             "status": "running",
-            "started_at": now(),
+            "started_at": _t0,
             "duration_sec": None,
             "cache": "miss",
             "cache_miss_reason": cache_miss_reason,
-            "fingerprint": fp,
+            # ⚠️ 2026-11-06（GPT「成功提交边界」）：`fingerprint` 只代表**最后一次成功**。
+            # 以前在开始时就写新指纹，于是「阶段失败」也会让 acceptance 认为
+            # 「指纹一致」—— 这是假绿的第二条入口（第一条是执行体内部跳过）。
+            # 本次尝试的指纹放 `attempt`，成功时由 finish_stage 提上来；
+            # 失败则保留上一次成功的指纹，让验收如实报「不符」。
+            "fingerprint": prev.get("fingerprint"),
+            "fingerprint_at": prev.get("fingerprint_at"),
+            "attempt": {"fingerprint": fp, "started_at": _t0,
+                        "params": params, "code": code,
+                        "inputs": inputs, "knowledge": knowledge},
             "params": params,
             "code": code,
             "inputs": inputs,
             "knowledge": knowledge,
-            "outputs": [],
+            # 产物记录也保留上次的：失败时不能把「上次成功产出了什么」抹掉
+            "outputs": prev.get("outputs") or [],
             "gate": None,
             "log": None,
         }
@@ -228,10 +240,22 @@ class Run(object):
                 - time.mktime(time.strptime(st["started_at"], "%Y-%m-%dT%H:%M:%S")), 1)
         except Exception:
             pass
-        if outputs is not None:
-            st["outputs"] = outputs
-        if gate is not None:
-            st["gate"] = gate
+        # ---- 只有成功才提交指纹与产物记录（2026-11-06，GPT「成功提交边界」）----
+        # 失败/部分完成**不得覆盖旧成功证明**：指纹留在上一次成功的值上，
+        # acceptance 于是会如实报「指纹不符」，而不是被这次失败的 attempt 骗过去。
+        att = st.pop("attempt", None) or {}
+        if status in ("ok", "imported"):
+            if att.get("fingerprint"):
+                st["fingerprint"] = att["fingerprint"]
+                st["fingerprint_at"] = st["ended_at"]
+            if outputs is not None:
+                st["outputs"] = outputs
+            if gate is not None:
+                st["gate"] = gate
+            st.pop("failed_attempt", None)
+        else:
+            st["failed_attempt"] = {"fingerprint": att.get("fingerprint"),
+                                    "ended_at": st["ended_at"], "status": status}
         if extra:
             st.update(extra)
         self.save()

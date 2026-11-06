@@ -412,11 +412,20 @@ TERMS_DB = os.path.join(os.environ.get("KIKOERU_STYLE",
 def allow_set_check(files, cache, out_json=""):
     """逐行做允许集校验。**ASR 版本按轨自动选**（坑 90）：成品与 draft/asr(v2) 混存，
     16 部里 12 部其实对齐 asr_v1_20261020，直接读 asr/ 会把日文对错行。"""
+    # 2026-11-06（GPT 议题 3）：不能"警告后继续"。缺表要说清**哪项能力没启用**，
+    # 存在但读不出来要说这是知识包坏了（两者性质不同，不能都吞掉）。
+    if not styleloc.capability("terms_db.json"):
+        _r = styleloc.resolve()
+        print("⚠️ 术语允许集校验**未启用**：知识包 %s（%s）里没有 terms_db.json"
+              % (_r["identity"], _r["source_type"]))
+        print("   → 05 仍会做 glossary 强制替换，但**没有**多义/变体的允许集校验")
+        print("   → 私有包跑 tmp/daily/build_terms_db.py 生成；公开预设不带这张表")
+        return
     try:
         db = json.load(open(TERMS_DB, encoding="utf-8"))["rows"]
     except Exception as e:
-        print("读不到 terms_db.json（先跑 tmp/daily/build_terms_db.py）：%s" % e)
-        return
+        # 存在但读不出来 = 知识包坏了。这不能静默跳过，否则成品会「看起来跑了」。
+        raise RuntimeError("terms_db.json 存在但读不出来（%s）：%s" % (TERMS_DB, e))
     try:
         import scan_violations as SV
     except Exception as e:
