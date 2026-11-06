@@ -101,6 +101,25 @@ if PERSON_LOCK:
 # 默认关：prompt 层规则在 Sakura 上效果有限（KIKOERU_PERSON_LOCK A/B 已证），
 # 先 A/B 再决定要不要默认开。
 STYLE_RULES = os.environ.get("KIKOERU_STYLE_RULES", "0") in ("1", "true", "True")
+
+# ---------- 角色事实（KIKOERU_ROLE_FACT，实验用）----------
+# GPT 2026-11-06 议题 1：第三种形态值得**一次小实验**，不值得直接架构化。
+# 关键是「**替换**泛化人称规则，而不是追加提示」—— 逐句 hint 已证灾难性失败
+# （解析失败 2→61、慢 16 倍），PERSON_LOCK 追加禁令也无效（15→14）。
+# 角色事实必须是**人工确认、轨内稳定**的；轨内角色变化时不得统一；
+# 原文不能确定主语时允许省略。**不做自动生成。**
+ROLE_FACT = os.environ.get("KIKOERU_ROLE_FACT", "").strip()
+if ROLE_FACT:
+    _i = SAKURA_SYSTEM.find("★ 最重要的一条")
+    _j = SAKURA_SYSTEM.find("2. 句内停顿")
+    if _i > 0 and _j > _i:
+        SAKURA_SYSTEM = (
+            SAKURA_SYSTEM[:_i]
+            + "★ 本作品的角色关系（人工确认，全轨稳定）：\n"
+            + "  " + ROLE_FACT + "\n"
+            + "  据此判断省略的主语。**原文不能确定主语时允许省略**（中文无主语很自然），\n"
+            + "  不要因为「答不上来」就补第三人称。\n"
+            + SAKURA_SYSTEM[_j:])
 if STYLE_RULES:
     try:
         import styleloc
