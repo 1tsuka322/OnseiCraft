@@ -65,6 +65,20 @@ def item(key):
 
 
 def target_path(it):
+    """模型落盘位置：**配置里已经指定的优先**。
+
+    ⚠️ 2026-11-06 发现：只按 `models_root()/subdir` 算路径时，如果 `pipeline.local.json`
+    把模型放在别处（本机 large-v2 在 `<repo>/models/`），设置页会显示「模型未下载」，
+    而 `check_models()` 读配置却说 OK —— 同一个页面里两个结论打架，典型的声明≠实际。
+    现在体检和下载都以「实际生效的配置路径」为准。
+    """
+    configured = settings.get_model(it["key"])
+    if configured:
+        p = str(configured).replace("\\", "/").rstrip("/")
+        # 文件型配置（model_sakura / model_q5 …）要取所在目录，下载器往目录里放文件
+        if os.path.splitext(p)[1] and not os.path.isdir(p):
+            p = os.path.dirname(p)
+        return p
     return os.path.join(models_root(), it["subdir"])
 
 
