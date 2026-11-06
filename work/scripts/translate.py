@@ -74,7 +74,7 @@ SAKURA_SYSTEM = (
     "7. 译文讲不通时回头怀疑 ASR 听错了近音词（「男子近世」实为「男子禁制」；"
     "房间对话里的「大象」多半是「そう」），按正确词意译，别照着错字硬翻。"
 )
-SAKURA_TEMP = 0.1
+SAKURA_TEMP = float(os.environ.get("KIKOERU_SAKURA_TEMP", "0.1"))
 SAKURA_TOP_P = 0.3
 
 # ---------- 人称硬约束（可选，KIKOERU_PERSON_LOCK=1 开启）----------
@@ -339,6 +339,16 @@ def call_llm(messages, temperature=0.3, max_tokens=1400, top_p=0.9, top_k=None):
                "chat_template_kwargs": {"enable_thinking": False}}
     if top_k is not None:
         payload["top_k"] = top_k
+    # ---- 2026-11-06 GPT 评审：请求里既没有 seed，也没有 cache_prompt ----
+    # llama.cpp server 的 `--seed 42` 只是**启动参数**，不等于每个请求的采样种子；
+    # 而 `cache_prompt` 默认 true，提示词缓存会改变计算批次 → logits 不逐位一致。
+    # 这两个都做成可实验的开关（默认不传，保持现网行为）。
+    _seed = os.environ.get("KIKOERU_LLM_SEED", "")
+    if _seed.strip():
+        payload["seed"] = int(_seed)
+    _cache = os.environ.get("KIKOERU_LLM_CACHE", "")
+    if _cache.strip():
+        payload["cache_prompt"] = _cache in ("1", "true", "True")
     req = urllib.request.Request(API, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                                  headers={"Content-Type": "application/json"})
     for k in range(3):
