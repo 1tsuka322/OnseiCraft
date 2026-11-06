@@ -98,7 +98,7 @@ MODEL_KEYS = [
     ("model_hymt", "HY-MT 模型（旧路线，可留空）", "file",
      "回退路线 engine=hymt 时使用"),
     ("asr_model", "语音识别模型（faster-whisper）", "dir",
-     "large-v3 目录，内含 model.bin / config.json"),
+     "large-v2 目录，内含 model.bin / config.json"),
     ("llama_dir", "llama.cpp 目录", "dir",
      "需要其中的 llama-server.exe"),
 ]

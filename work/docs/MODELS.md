@@ -12,7 +12,7 @@
 
 | 用途       | 模型                          | 大小              | 显存      | 必需     |
 | -------- | --------------------------- | --------------- | ------- | ------ |
-| 语音识别（01） | `faster-whisper-large-v3`   | ~3GB            | 3~4.5GB | ✅      |
+| 语音识别（01） |  `faster-whisper-large-v2`   | ~3GB            | 3~4.5GB | ✅      |
 | 初译（03）   | **Sakura-7B**（默认）           | ~4.3GB (IQ4_XS) | ~4.3GB  | ✅      |
 | 初译备选（03） | `HY-MT1.5-7B`（翻译专用）         | ~4.3GB (Q4_K_M) | ~4.4GB  | 可选     |
 | 润色（04）   | `Qwen2.5-7B-Instruct`       | ~5.4GB (Q5_K_M) | ~5.6GB  | 仅旧路线需要 |
@@ -29,7 +29,7 @@
 | 模型                       | 地址                                                                                              |
 | ------------------------ | ----------------------------------------------------------------------------------------------- |
 | llama.cpp                | <https://github.com/ggml-org/llama.cpp/releases> （下 `llama-*-bin-win-cuda-x64.zip`，解压即用）        |
-| faster-whisper large-v3  | <https://huggingface.co/Systran/faster-whisper-large-v3> （或 `pip install faster-whisper` 首次自动下） |
+|  faster-whisper large-v2  | <https://huggingface.co/Systran/faster-whisper-large-v2> （或 `pip install faster-whisper` 首次自动下） |
 | Sakura-7B GGUF           | <https://github.com/Hengle/SakuraLLM> （模型列表里有 `sakura-7b-qwen2.5-v1.0-iq4xs.gguf`）              |
 | HY-MT1.5-7B GGUF         | <https://modelscope.cn/models/Tencent-Hunyuan/HY-MT1.5-7B-GGUF>                                 |
 | Qwen2.5-7B-Instruct GGUF | <https://modelscope.cn/models/Qwen/Qwen2.5-7B-Instruct-GGUF>                                    |
@@ -54,7 +54,7 @@
   "model_q5":     "D:/models/qwen2.5-7b-instruct-gguf/qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf",
   "model_q4":     "D:/models/qwen2.5-7b-instruct-gguf/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"
  },
- "asr_model": "D:/models/faster-whisper-large-v3"
+ "asr_model": "D:/models/faster-whisper-large-v2"
 }
 ```
 

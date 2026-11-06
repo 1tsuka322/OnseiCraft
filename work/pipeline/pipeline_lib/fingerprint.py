@@ -40,7 +40,7 @@ GGUF = {
     "gguf_qwen_q4": (r"D:\fasterwhisperGUI-0.8.5.sfx\models\qwen2.5-7b-instruct-gguf"
                      r"\qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"),
 }
-WHISPER_NAME = "faster-whisper-large-v3"
+WHISPER_NAME = "faster-whisper-large-v2"   # 2026-11-06 起默认（见 internal/docs/experiments/ASR_AB_20261106.md）
 
 # 每个阶段实际用到的模型（最小闭包）。**空列表 = 该阶段不调模型**：
 # 02/05/06 是纯确定性阶段，以前 names=None 会把 whisper + 全部 gguf 都算进指纹，
@@ -125,9 +125,19 @@ def env_whitelist(cfg, stage=None):
 
 
 def _stat(path):
+    """记录一个模型产物的存在性/大小/mtime。
+
+    目录形态（whisper 的 ct2 模型）→ 对 `model.bin` 取大小与 mtime。
+    原来直接 `os.stat(目录)`，`bytes` 恒为 0、mtime 是**目录**的，
+    换权重文件（同名覆盖）时指纹可能不变 —— 等于让 01 替新模型复用旧产物。
+    """
+    probe = path
+    if os.path.isdir(path):
+        mb = os.path.join(path, "model.bin")
+        probe = mb if os.path.isfile(mb) else path
     rec = {"path": path, "exists": False, "bytes": None, "mtime": None}
     try:
-        st = os.stat(path)
+        st = os.stat(probe)
         rec.update(exists=True, bytes=st.st_size, mtime=int(st.st_mtime))
     except OSError:
         pass
@@ -165,10 +175,11 @@ def model_records(cfg, stage=None):
         ap = _asr_model_path(cfg)
         if ap and (os.sep in ap or "/" in ap or "\\" in ap):
             rec = _stat(ap)
-            rec["name"] = WHISPER_NAME
+            # name 取**实际目录名**，不写死常量 —— 换模型时指纹要能看出换了哪个。
+            rec["name"] = os.path.basename(ap.rstrip("\\/")) or WHISPER_NAME
             out["whisper"] = rec
         else:
-            # 规格名（large-v3）：模型在 HF 缓存里，路径不可知 → 只记名字，
+            # 规格名（large-v2）：模型在 HF 缓存里，路径不可知 → 只记名字，
             # 但**必须记成「未知」而不是「存在」**，别让指纹替模型打包票。
             out["whisper"] = {"name": ap or WHISPER_NAME, "path": None,
                               "exists": None, "bytes": None, "mtime": None}

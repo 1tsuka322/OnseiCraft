@@ -118,7 +118,7 @@ python -m PyInstaller --noconfirm --clean \
 | **有** | Python 运行时、PySide6、ctranslate2 + cuBLAS/cuDNN（GPU 推理必需）、faster-whisper、onnxruntime、`work/{scripts,pipeline,presets}` |
 | **没有** | **模型**（约 8GB）、音频、成品字幕、语料 |
 
-模型不打包是硬约束：whisper large-v3 3.1GB + Sakura-7B 4.2GB + llama.cpp CUDA 0.7GB，塞进去安装包要 8GB 以上。
+模型不打包是硬约束：whisper large-v2 3.1GB + Sakura-7B 4.2GB + llama.cpp CUDA 0.7GB，塞进去安装包要 8GB 以上。
 所以做成**首次启动检测 + 一键下载**：首页会提示缺什么，设置页点「下载」自动下到
 安装目录的 `models\` 并写好配置（支持断点续传、可切国内镜像 hf-mirror.com）。
 

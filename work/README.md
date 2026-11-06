@@ -55,7 +55,7 @@ work/
 │   └── README.md
 │
 ├── scripts/                 ★ 阶段脚本（被 pipeline 调用，也可单独跑）
-│   ├── asr.py               01 语音识别（faster-whisper large-v3）
+│   ├── asr.py               01 语音识别（faster-whisper large-v2）
 │   ├── asr_fix_scan.py      02 确定性改错（errata / 表记白名单）
 │   ├── translate.py         03 初译（默认 Sakura；HY-MT / Qwen 仅回退路线）
 │   ├── polish.py            04 后处理（默认 cleanup-only：标点/格式归一 + E1 锁，不过 LLM）

@@ -96,7 +96,7 @@ python script_align.py <script目录> <asr_raw目录> <asr目录>
 
 详见 `docs/PIPELINE.md` 的台本打轴一节。
 
-### asr.py —— 音频识别（faster-whisper large-v3）
+### asr.py —— 音频识别（faster-whisper large-v2）
 ```bash
 python asr.py <音频目录> <输出目录> auto [--recursive] [--device cuda] [--compute float16]
 ```

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """模型管理：检测缺失 + 一键下载。
 
-模型不随安装包分发（whisper large-v3 约 3.1GB、Sakura-7B 约 4.2GB），
+模型不随安装包分发（whisper large-v2 约 3.1GB、Sakura-7B 约 4.2GB），
 但**不该让用户自己去找**——这里把「下载 → 放对位置 → 写进配置」全包了。
 
 下载默认走 HuggingFace 官方；国内可在设置里切镜像（hf-mirror.com）。
@@ -27,11 +27,12 @@ ENDPOINTS = {
 ITEMS = [
     {
         "key": "asr_model",
-        "label": "语音识别 · Whisper large-v3",
-        "desc": "约 3.1 GB。识别日语音频，GPU 上约 7 倍实时。",
+        "label": "语音识别 · Whisper large-v2",
+        "desc": "约 3.1 GB。识别日语音频，GPU 上约 7 倍实时。"
+                "（2026-11-06 由 v3 换为 v2：两条带官方台本的轨上表記/读音 CER 全面更低。）",
         "kind": "hf",
-        "repo": "Systran/faster-whisper-large-v3",
-        "subdir": "faster-whisper-large-v3",
+        "repo": "Systran/faster-whisper-large-v2",
+        "subdir": "faster-whisper-large-v2",
         "approx": 3.1,
     },
     {

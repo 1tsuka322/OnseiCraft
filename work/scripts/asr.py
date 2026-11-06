@@ -25,11 +25,20 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import asr_halluc  # noqa: E402  三门槛幻觉判据（词级时间戳），与 asr.py 同目录
 
+# 默认 ASR 模型目录名（2026-11-06 起 = large-v2，见 resolve_asr_model 的注释）
+ASR_MODEL_DIRNAME = "faster-whisper-large-v2"
+
+
 def resolve_asr_model(explicit=None):
     """解析 ASR 模型：返回 (值, 来源)。值可以是**本地目录**或 faster-whisper 的**规格名**。
 
     优先级：`--model` → FW_MODEL → KIKOERU_ASR_MODEL → pipeline.json → pipeline.local.json
-            → `<root>/models/faster-whisper-large-v3` → 规格名 "large-v3"（让 faster-whisper 自己下）。
+            → `<root>/models/faster-whisper-large-v2` → 规格名 "large-v2"（让 faster-whisper 自己下）。
+
+    ⚠️ 2026-11-06 起默认模型是 **large-v2**（不是 v3）。两条带官方台本的轨实测：
+    表記 CER 17.4%/19.0% vs v3 的 22.5%/21.2%，读音 CER 7.4%/9.6% vs 7.9%/10.5%，
+    汉字率也更高（19.6%/18.1% vs 17.0%/17.5%）。详见
+    `internal/docs/experiments/ASR_AB_20261106.md`。
 
     ⚠️ 2026-11-01 用户报错（OnseiCraft 0.1.3）：这里原来是
     `os.environ.get("FW_MODEL", r"D:\\fasterwhisperGUI-0.8.5.sfx\\models\\...")`——
@@ -62,13 +71,13 @@ def resolve_asr_model(explicit=None):
                 pass
 
     for base in (root, os.path.dirname(root)):
-        cand = os.path.join(base, "models", "faster-whisper-large-v3")
+        cand = os.path.join(base, "models", ASR_MODEL_DIRNAME)
         if os.path.isdir(cand):
             cands.append(("默认相对目录", cand))
 
     if cands:
         return cands[0][1], cands[0][0]
-    return "large-v3", "内置规格名（faster-whisper 自行下载）"
+    return ASR_MODEL_DIRNAME, "内置规格名（faster-whisper 自行下载）"
 
 
 def _looks_like_path(s):
@@ -88,7 +97,7 @@ def check_asr_model(model, source):
             "ASR 模型目录不存在：%s\n"
             "  来源：%s\n"
             "  → 修法（任选一条）：\n"
-            "     1) 打开 OnseiCraft → 设置 → 「语音识别模型」选到 faster-whisper-large-v3 目录\n"
+            "     1) 打开 OnseiCraft → 设置 → 「语音识别模型」选到 faster-whisper-large-v2 目录\n"
             "     2) 在 work/pipeline/pipeline.local.json 里写 \"asr_model\": \"<模型目录>\"\n"
             "     3) 设环境变量 FW_MODEL=<模型目录>\n"
             "  该目录里应有 model.bin / config.json / tokenizer.json / vocabulary.json"
@@ -97,7 +106,7 @@ def check_asr_model(model, source):
         raise SystemExit(
             "ASR 模型目录缺 model.bin：%s\n"
             "  来源：%s\n"
-            "  → 目录选对了但没下完，或选到了上一级。请重新下载/解压 faster-whisper-large-v3。"
+            "  → 目录选对了但没下完，或选到了上一级。请重新下载/解压 faster-whisper-large-v2。"
             % (model, source))
 
 

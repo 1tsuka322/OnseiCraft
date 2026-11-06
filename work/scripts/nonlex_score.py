@@ -40,6 +40,10 @@ C3_SCRIPTS = os.path.join(ROOT, "data", "tmp", "daily")
 if C3_SCRIPTS not in sys.path:
     sys.path.insert(0, C3_SCRIPTS)
 LARGE = r"D:\fasterwhisperGUI-0.8.5.sfx\models\faster-whisper-large-v3"
+# ⚠️ 这里**故意保留 large-v3**，不要跟着 01 的默认模型改。
+# `data/models/nonlex_detector.json` 是用 large-v3 encoder 的 1280 维均值池化特征训练的，
+# 换成 large-v2 的 encoder 会让权重与特征分布不匹配（v2/v3 的 encoder 是不同权重）。
+# 01 从 2026-11-06 起默认 large-v2，但本工具是离线评测脚本，与管线解耦。
 OUTDIR = os.path.join(ROOT, "data", "tmp", "nonlex_review")
 SR = 16000
 
