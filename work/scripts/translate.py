@@ -85,6 +85,24 @@ _PERSON_LOCK_TEXT = (
 if PERSON_LOCK:
     SAKURA_SYSTEM = SAKURA_SYSTEM + _PERSON_LOCK_TEXT
 
+# ---------- 译法规范注入（可选，KIKOERU_STYLE_RULES=1 开启）----------
+# 背景：`style/user_rules.txt` 一直被称作「标点与译法唯一权威」，但实际上
+# **只有 align_style.py 读它（标点策略）**，03 翻译根本不读 —— 又一个「声明≠实际」。
+# 这里把其中的「## 译法规则」章节接进 prompt（词级译法仍以 glossary 为准，05 强制锁定）。
+# 默认关：prompt 层规则在 Sakura 上效果有限（KIKOERU_PERSON_LOCK A/B 已证），
+# 先 A/B 再决定要不要默认开。
+STYLE_RULES = os.environ.get("KIKOERU_STYLE_RULES", "0") in ("1", "true", "True")
+if STYLE_RULES:
+    try:
+        import styleloc
+        _p = os.path.join(styleloc.style_dir(), "user_rules.txt")
+        _txt = open(_p, encoding="utf-8").read()
+        _i = _txt.find("## 译法规则")
+        if _i >= 0:
+            SAKURA_SYSTEM = SAKURA_SYSTEM + "\n\n# 【本作品译法规范】\n" + _txt[_i:]
+    except Exception:
+        pass        # 规则读不到不影响翻译，静默降级（不要让它把整部作品拦死）
+
 # ---------- HY-MT 1.5（腾讯混元，翻译专用模型）----------
 # KIKOERU_ENGINE=hymt 切到 Hunyuan-MT 1.5 做**初译**（后续仍由 Qwen + 风格库润色）。
 # ⚠️ 它是 instruction-following 的**翻译模型**，不是通用聊天模型：prompt 必须明确
