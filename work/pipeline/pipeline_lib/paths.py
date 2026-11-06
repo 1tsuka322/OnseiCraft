@@ -127,7 +127,8 @@ DEFAULTS = {
             "stages": ["01_asr", "02_asr_fix", "03_translate", "04_polish",
                        "05_term_lock", "06_checks"],
             "gates": ["check", "empty", "scan", "errata_audit", "test_regressions",
-                      "overlay", "trunc", "slot_guard", "semantic", "locks", "lexical"],
+                      "overlay", "trunc", "slot_guard", "semantic", "locks", "lexical",
+                      "person_audit"],
         },
         "fast": {
             "stages": ["01_asr", "02_asr_fix", "03_translate", "04_polish",
@@ -137,7 +138,8 @@ DEFAULTS = {
         "checks": {
             "stages": ["06_checks"],
             "gates": ["check", "empty", "scan", "errata_audit", "test_regressions",
-                      "overlay", "trunc", "slot_guard", "semantic", "locks", "lexical"],
+                      "overlay", "trunc", "slot_guard", "semantic", "locks", "lexical",
+                      "person_audit"],
         },
     },
 }

@@ -580,6 +580,14 @@ GATE_DEFS = {
     "slot_guard": {"hard": False, "cmd": lambda ctx, d: [
         ctx.py, _script("slot_guard.py"), effective_asr(ctx), ctx.draft_dir(),
         final_dir(ctx), "--report", os.path.join(d, "slot_guard.json")]},
+    # 人称风险（2026-11-06）：原文前后 6s 内没有任何他者实体，译文却出现「她/他」。
+    # 实测 RJ1058739：报 16 行、**零误报**（漏报 4 行，被「实体/引用」规则放过）。
+    # 只报不改：日文常不标性别，且 `先生、優しいね` 这类既可能叫听者也可能谈第三人。
+    # 背景：翻译层 5 条路（PERSON_LOCK/STYLE_RULES/prompt 冲突/块边界/事实注入）全无效，
+    # 只剩 CHUNK 3→4 把 22 行降到 15 行 —— 修不掉就至少要让人知道哪几行要看。
+    "person_audit": {"hard": False, "cmd": lambda ctx, d: [
+        ctx.py, _script("person_audit.py"), final_dir(ctx), effective_asr(ctx),
+        "--json", os.path.join(d, "person_audit.json"), "--quiet"]},
     # E1 锁覆盖度（2026-10-31 P0）：登记的锁有多少条**真的出现在成品里**。
     # 以前没有任何门禁管这件事：`polish.apply_lock` 匹配不上就返回原文，日志只写
     # 「覆写 N 行」，miss 不报错。实测 17 部 1032 条锁只有 547 条落地（53%），
@@ -812,7 +820,7 @@ STAGES = {
         # 漏登记 = 改了代码但指纹不变（R156 的 03 盲区，就是靠 S7 才扫出来的）。
         "code": ["knobs.py", "check.py", "empty_check.py", "scan_violations.py", "errata_audit.py",
                  "test_regressions.py", "repair_overlay.py", "semantic_coverage.py",
-                 "lock_coverage.py", "lexical_audit.py",
+                 "lock_coverage.py", "lexical_audit.py", "person_audit.py",
                  "styleloc.py", "rootloc.py", "asr_halluc.py", "asr_words.py", "cues.py",
                  "polish.py", "pragmatics_hints.py", "translate.py", "entity_ledger.py",
                  "lock_match.py", "mask_nonlexical.py", "term_lock.py"],
