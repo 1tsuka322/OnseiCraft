@@ -22,5 +22,5 @@
   "asr_latin_cleanup": true,
   "_asr_latin_cleanup_note": "01 阶段末尾清 Whisper 在非语音段吐的英文（全库实测 58 段/7 部）。确定性，不需要模型。",
   "seg_flush_chars": 10,
-  "chunk": 3
+  "chunk": 4
 }

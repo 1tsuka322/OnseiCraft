@@ -340,5 +340,23 @@
   "hit": 34,
   "rate": 0.77,
   "source": "gemini01+corpus"
+ },
+ "班の子たち": {
+  "zh": "同组的人",
+  "hit": 0,
+  "rate": 0.0,
+  "source": "proposal:term_glossary_20261106_002"
+ },
+ "梵天": {
+  "zh": "羽毛棒",
+  "hit": 0,
+  "rate": 0.0,
+  "source": "proposal:term_glossary_20261106_001"
+ },
+ "銀閣": {
+  "zh": "银阁寺",
+  "hit": 0,
+  "rate": 0.0,
+  "source": "proposal:term_glossary_20261106_003"
  }
 }

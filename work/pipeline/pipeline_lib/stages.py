@@ -308,9 +308,13 @@ def stage_asr(ctx):
         cmd += ["--model", str(asr_model)]
     if ctx.cfg.get("recursive"):
         cmd.append("--recursive")
-    # --force 必须一路传到 asr.py，否则它看到旧 json 就 6 轨全跳过，
-    # 阶段 7 秒"成功"、manifest 被写成新模型、产物还是旧的（2026-11-06 踩到）。
-    if getattr(ctx, "force", False):
+    # --redo 不能只在 force 时给：能进入本阶段执行，说明**阶段级指纹已经判定**
+    # 「上次产物不是当前配置（模型/参数/输入/知识表）产生的」。此时 asr.py 若仍按
+    # 「json 存在」跳过，这次执行就是空转 —— 2026-11-06 的假绿正是这么来的
+    # （换模型后 17/17 部 01 全部跳过，manifest 却写成了新模型）。
+    # 01 的 json 里没有记录产出它的模型/参数，无法逐轨判断能否复用 → 一律重跑。
+    # 只有「跑一半崩了要续跑」才需要保留跳过，显式设 KIKOERU_ASR_RESUME=1。
+    if not (ctx.env.get("KIKOERU_ASR_RESUME", "0") in ("1", "true", "True")):
         cmd.append("--redo")
     if ctx.dry:
         print("[dry] " + " ".join(cmd))

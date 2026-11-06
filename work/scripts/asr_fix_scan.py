@@ -556,14 +556,16 @@ def auto_apply_errata(draft, src_dir, fix_dir):
                     by_start[k]["fix_log"] = m.get("fix_log")
                     asr_words.clear_words(by_start[k])
             n += len(manual)
-        if n:
-            src["segments"] = segs
-            src["fix_meta"] = {"applied": n, "source": "asr_errata.json",
-                               "errata_hash": errata_hash, "src_sig": _src_sig,
-                               "time": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")}
-            json.dump(src, open(os.path.join(fix_dir, name), "w", encoding="utf-8"),
-                      ensure_ascii=False, indent=1)
-            n_total += n
+        # 走到这里说明「错字表变了 或 源 ASR 变了」→ 必须重建，**不能只在 n>0 时写盘**。
+        # 撤销某条 errata 后 n 会变成 0，若此时不写，旧 fix/ 里的修正版就残留下来
+        # （GPT 2026-11-06 指出的 P0 同类：缓存键没覆盖"规则被删"这个方向）。
+        src["segments"] = segs
+        src["fix_meta"] = {"applied": n, "source": "asr_errata.json",
+                           "errata_hash": errata_hash, "src_sig": _src_sig,
+                           "time": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")}
+        json.dump(src, open(os.path.join(fix_dir, name), "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=1)
+        n_total += n
     return n_total
 
 
