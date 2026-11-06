@@ -121,6 +121,7 @@ if STYLE_RULES:
 # 「她」补错的诱因之一。**只调送模型的分组，不动 cue、不动时间戳、不放大 CHUNK。**
 # 句末只认真正的句子结束，**不认「…」**（那是拖音/未说完，切了反而断线索）。
 CHUNK_ALIGN = os.environ.get("KIKOERU_CHUNK_ALIGN", "0") in ("1", "true", "True")
+PRAG_HINTS = os.environ.get("KIKOERU_PRAG_HINTS", "0") in ("1", "true", "True")
 _SENT_END = re.compile(r"[。．！？!?」』）)】]\s*$")
 
 
@@ -942,6 +943,31 @@ def translate_block(block, prev_ctx, prev_raw=None):
         # 行数对不上就重试（最多 3 次）；返回里有假名（没译干净）也重试。
         body = "\n".join(t for _, t in block)
         user = "将下面的日文文本翻译成中文：\n" + body
+        # ---------- 事实层注入（KIKOERU_PRAG_HINTS=1 开启，实验用）----------
+        # 动机：`pragmatics_hints.cue_hint()` 能对单句判断「这句是不是在说听者」
+        # （靠 あんた／でしょ 这类显式标记），现行 Sakura 路线**完全没用它**
+        # ——它只被 polish.py 的 LLM 分支和 HY-MT 分支调用。
+        # ⚠️ 2026-10-18 事故：hint 用 `[c042｜高｜必须] …` 格式时，模型把这行
+        #    **当成待译 cue** 译成中文正文漏进成品。所以这里：
+        #    ① 用 `※` 开头（render_hint_line 已经改过）；
+        #    ② 显式声明「不是待译文本、不要出现在输出里」；
+        #    ③ 仍按 len(block) 校验行数，多吐一行就判失败重试。
+        if PRAG_HINTS:
+            try:
+                import pragmatics_hints as _PH
+                _hl = []
+                for _k, (_i, _t) in enumerate(block):
+                    _h = _PH.cue_hint(_t)
+                    if _h:
+                        _hl.append(_PH.render_hint_line("c%d" % (_k + 1), _h))
+                if _hl:
+                    user = ("将下面的日文文本翻译成中文：\n"
+                            "（下面 ※ 开头的是**归属提示**，只帮你判断主语是谁，"
+                            "**不是待译文本**——不要翻译它、不要让它出现在输出里；"
+                            "你的输出仍然只有 %d 行译文）\n" % len(block)
+                            + "\n".join(_hl) + "\n\n" + body)
+            except Exception:
+                pass
         reply = ""
         for _ in range(3):
             reply = call_llm([{"role": "system", "content": SAKURA_SYSTEM},
