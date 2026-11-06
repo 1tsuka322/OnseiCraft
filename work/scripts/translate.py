@@ -115,6 +115,37 @@ if STYLE_RULES:
         print("⚠️ KIKOERU_STYLE_RULES=1 但译法规则读取失败（翻译继续，规则未生效）：%s"
               % _e, flush=True)
 
+
+# ---------- 块边界（KIKOERU_CHUNK_ALIGN=1 开启）----------
+# 动机（GPT 2026-11-06）：块边界切在半句中间，模型就丢了主语线索 —— 这正是
+# 「她」补错的诱因之一。**只调送模型的分组，不动 cue、不动时间戳、不放大 CHUNK。**
+# 句末只认真正的句子结束，**不认「…」**（那是拖音/未说完，切了反而断线索）。
+CHUNK_ALIGN = os.environ.get("KIKOERU_CHUNK_ALIGN", "0") in ("1", "true", "True")
+_SENT_END = re.compile(r"[。．！？!?」』）)】]\s*$")
+
+
+def make_blocks(lines, max_n):
+    """把 n 行分成送模型的块。
+
+    默认：每 max_n 行一块（固定切，现网行为）。
+    CHUNK_ALIGN：在句末标点处提前收块，块长落在 [min_n, max_n]；
+                 找不到句末就按 max_n 硬切，保证不会无限长。
+    """
+    n = len(lines)
+    if not CHUNK_ALIGN:
+        return [list(range(i, min(i + max_n, n))) for i in range(0, n, max_n)]
+    min_n = max(2, max_n // 2)
+    blocks, cur = [], []
+    for i in range(n):
+        cur.append(i)
+        t = (lines[i].get("text") or "").rstrip()
+        if len(cur) >= max_n or (len(cur) >= min_n and _SENT_END.search(t)):
+            blocks.append(cur)
+            cur = []
+    if cur:
+        blocks.append(cur)
+    return blocks
+
 # ---------- HY-MT 1.5（腾讯混元，翻译专用模型）----------
 # KIKOERU_ENGINE=hymt 切到 Hunyuan-MT 1.5 做**初译**（后续仍由 Qwen + 风格库润色）。
 # ⚠️ 它是 instruction-following 的**翻译模型**，不是通用聊天模型：prompt 必须明确
@@ -1036,7 +1067,7 @@ def main():
         src = d["source"]
         lines = build_lines(d["segments"])
         n = len(lines)
-        blocks = [list(range(i, min(i + CHUNK, n))) for i in range(0, n, CHUNK)]
+        blocks = make_blocks(lines, CHUNK)
         results = [None] * n
         print("\n=== %s : %d 行 ===" % (src[:50], n), flush=True)
 
