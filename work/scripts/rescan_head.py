@@ -313,7 +313,8 @@ def main():
         print("（--dry 或无需补扫，结束）")
         return
 
-    print("\n加载模型 large-v3 (cuda / float16) ...", flush=True)
+    print("\n加载模型 %s (cuda / float16) ..." % os.path.basename(os.path.normpath(MODEL)),
+          flush=True)
     model = WhisperModel(MODEL, device="cuda", compute_type="float16")
     print("就绪\n", flush=True)
 

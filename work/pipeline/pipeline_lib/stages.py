@@ -235,7 +235,9 @@ def _asr_model_label(ctx):
             if p:
                 break
     if not p:
-        return "large-v3"
+        # 兜底标签也要跟默认模型走；以前这里写死 "large-v3"，换模型后
+        # 没配 asr_model 的机器 manifest 会继续声称 v3（params.model 是**声明**）。
+        return FP.WHISPER_NAME
     return os.path.basename(os.path.normpath(p)) or p
 
 
