@@ -252,10 +252,10 @@ def cue_sig(src, ln, old, system, mem=""):
         h.update(b"\x01mem")
         h.update(hashlib.sha1(mem.encode("utf-8")).digest())
     return h.hexdigest()[:20]
-# 写进 lrc 的 [by:] 元信息，要如实反映实际用的翻译引擎。
-# 配合 KIKOERU_ENGINE 环境变量（与 translate.py 同一套），跑 Sakura 时两条命令都要带上它。
+# 写进 lrc 的 [by:] 元信息，要如实反映实际用的翻译引擎**和 ASR 模型**。
+# 配合 KIKOERU_ENGINE / FW_MODEL 环境变量（与 translate.py 同一套）。
 _ENGINE_NAME = knobs.engine_tag()   # 表在 knobs.py，与 translate.py 共用
-MODEL_TAG = "faster-whisper large-v3 + %s (人工风格对齐)" % _ENGINE_NAME
+MODEL_TAG = "%s + %s (人工风格对齐)" % (knobs.asr_tag(), _ENGINE_NAME)
 # 风格库位置统一由 styleloc 解析：环境变量 → data/style → presets（公开预设）
 import styleloc  # noqa: E402
 DEFAULT_STYLE = styleloc.style_dir()

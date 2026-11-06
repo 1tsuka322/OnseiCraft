@@ -50,3 +50,31 @@ def engine_tag(engine=None):
     """引擎名 → LRC 标签用的显示名。未知引擎回落到 Qwen2.5-7B（旧行为）。"""
     e = (engine if engine is not None else os.environ.get("KIKOERU_ENGINE", "qwen")) or "qwen"
     return ENGINE_TAGS.get(str(e).strip().lower(), _ENGINE_DEFAULT)
+
+
+_ASR_DEFAULT = "faster-whisper-large-v2"
+
+
+def asr_tag():
+    """LRC `[by:]` 里的 ASR 显示名：**取实际生效的模型**，不写死。
+
+    2026-11-06 换成 large-v2 后发现 `translate.py` / `polish.py` 都把
+    `"faster-whisper large-v3"` 写死在标签里 —— 换模型后**每一份成品的 [by:] 都在撒谎**。
+    管线里 `Ctx.env` 已经注入 FW_MODEL / KIKOERU_ASR_MODEL（与 01 命令行的 --model 同源），
+    直接跑脚本时退回到读 pipeline.local.json，最后才用默认目录名。
+    """
+    for key in ("FW_MODEL", "KIKOERU_ASR_MODEL"):
+        v = (os.environ.get(key) or "").strip()
+        if v:
+            return os.path.basename(v.replace("\\", "/").rstrip("/")) or v
+    try:
+        import json
+        p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "pipeline", "pipeline.local.json")
+        with open(p, encoding="utf-8") as f:
+            v = ((json.load(f) or {}).get("asr_model") or "").strip()
+        if v:
+            return os.path.basename(v.replace("\\", "/").rstrip("/")) or v
+    except Exception:
+        pass
+    return _ASR_DEFAULT

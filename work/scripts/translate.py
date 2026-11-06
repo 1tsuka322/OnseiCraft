@@ -24,9 +24,9 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 API = "http://127.0.0.1:8080/v1/chat/completions"
-# ⚠️ 标签必须跟着实际引擎走：以前写死 Qwen2.5-7B-Instruct，跑 Sakura 时草稿头是假的
-# （R153 就是靠这个标签发现「声明 hymt 实际跑 Qwen」，标签本身不能撒谎）。
-MODEL_TAG = "faster-whisper large-v3 + %s" % knobs.engine_tag()
+# ⚠️ 标签必须跟着**实际**引擎与实际 ASR 模型走：以前写死 Qwen2.5 / large-v3，
+# 跑 Sakura 时草稿头是假的（R153 就是靠这个标签发现「声明 hymt 实际跑 Qwen」）。
+MODEL_TAG = "%s + %s" % (knobs.asr_tag(), knobs.engine_tag())
 
 # ---------- 翻译引擎 ----------
 # KIKOERU_ENGINE=sakura 切到 SakuraLLM（专为日中翻译训练的 ACGN 微调）。
