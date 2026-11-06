@@ -458,13 +458,18 @@ def auto_apply_errata(draft, src_dir, fix_dir):
         name = os.path.basename(p)
         dst = os.path.join(fix_dir, name)
         manual = []
+        _src_sig = hashlib.md5(open(p, "rb").read()).hexdigest()[:12]
         if os.path.exists(dst):
             try:
                 old = json.load(open(dst, encoding="utf-8"))
             except Exception:
                 old = {}
-            if (old.get("fix_meta") or {}).get("errata_hash") == errata_hash:
-                continue        # 表没变，跳过（增量语义保留）
+            _meta = old.get("fix_meta") or {}
+            # ⚠️ 只比 errata_hash 不够：换模型重跑 01 后源 ASR 文本变了、但错字表没变，
+            #    这里会 continue → 03 拿**旧文本**翻译 → 成品与 01 脱节，而 06 门禁查不出来。
+            #    2026-11-06 踩到：17 部「重跑」后 01 是旧的，若 02 也复用旧 fix/ 就彻底断链。
+            if _meta.get("errata_hash") == errata_hash and _meta.get("src_sig") == _src_sig:
+                continue        # 表和源 ASR 都没变，跳过（增量语义保留）
             # 表变了 → 重做；但 `--apply-fix` 落地的人工修正必须留下
             manual = [sg for sg in (old.get("segments") or [])
                       if (sg.get("fix_log") or {}).get("rule") == "人工"]
@@ -554,7 +559,7 @@ def auto_apply_errata(draft, src_dir, fix_dir):
         if n:
             src["segments"] = segs
             src["fix_meta"] = {"applied": n, "source": "asr_errata.json",
-                               "errata_hash": errata_hash,
+                               "errata_hash": errata_hash, "src_sig": _src_sig,
                                "time": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")}
             json.dump(src, open(os.path.join(fix_dir, name), "w", encoding="utf-8"),
                       ensure_ascii=False, indent=1)

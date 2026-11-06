@@ -24,10 +24,14 @@ from . import manifest, paths, queue
 
 # ---------------------------------------------------------------- 上下文
 class Ctx(object):
-    def __init__(self, run, cfg, dry=False):
+    def __init__(self, run, cfg, dry=False, force=False):
         self.run = run
         self.cfg = cfg
         self.dry = dry
+        # force 要能传进子脚本：asr.py 有「json 已存在就跳过」的断点续跑，
+        # 只绕过阶段级指纹缓存是不够的（2026-11-06：--force 跑出 7 秒假绿，
+        # manifest 记 v2、产物还是 10-28 的旧 json）。
+        self.force = force
         self.py = paths.python_exe(cfg)
         self.project = run.data["project"]
         self.source = run.data.get("source")
@@ -304,6 +308,10 @@ def stage_asr(ctx):
         cmd += ["--model", str(asr_model)]
     if ctx.cfg.get("recursive"):
         cmd.append("--recursive")
+    # --force 必须一路传到 asr.py，否则它看到旧 json 就 6 轨全跳过，
+    # 阶段 7 秒"成功"、manifest 被写成新模型、产物还是旧的（2026-11-06 踩到）。
+    if getattr(ctx, "force", False):
+        cmd.append("--redo")
     if ctx.dry:
         print("[dry] " + " ".join(cmd))
         return {"outputs": [], "gate": None, "extra": {"dry_run": True}}
@@ -457,6 +465,11 @@ def stage_polish(ctx):
         # 丢行硬门禁的显式放行口。默认关：丢行必须是人看过之后的决定，
         # 而且会写进 params（指纹）与 gate，promote 时还会再拦一次。
         cmd.append("--allow-loss")
+    # --force 也要落到 polish.py：它自己有 E2 缓存（KIKOERU_NO_CACHE），
+    # cleanup_only 分支虽然已经不走缓存，但换成旧路线（polish_cleanup_only=false）时
+    # 不传就会静默复用旧译文 —— 与 01 的 --redo 同一类坑。
+    if getattr(ctx, "force", False):
+        cmd.append("--force")
     if ctx.dry:
         print("[dry] " + " ".join(cmd))
         return {"outputs": [], "gate": None, "extra": {"dry_run": True}}
@@ -838,7 +851,7 @@ def _miss_reason(prev, fp, params, inputs, know, code, models=None):
 
 def execute(run, name, cfg, force=False, dry=False):
     spec = STAGES[name]
-    ctx = Ctx(run, cfg, dry=dry)
+    ctx = Ctx(run, cfg, dry=dry, force=force)
     params = spec["params"](ctx)
     inputs = spec["inputs"](ctx)
     know = manifest.knowledge_now(spec["knowledge"])

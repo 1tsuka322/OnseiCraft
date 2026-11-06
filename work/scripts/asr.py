@@ -447,6 +447,11 @@ def main():
     ap.add_argument("--model", default=None,
                     help="faster-whisper 模型目录或规格名（默认按 环境变量 → pipeline 配置 解析）")
     ap.add_argument("--recursive", action="store_true")
+    ap.add_argument("--redo", action="store_true",
+                    help="忽略已存在的 json，强制重新识别。默认是断点续跑（已有结果就跳过）；"
+                         "⚠️ 不加这个参数时，`pipeline run --force` 只会绕过阶段级指纹缓存，"
+                         "进到本脚本后仍会因为 json 已存在而 6 轨全跳过 —— "
+                         "manifest 被改写成新模型、产物却是旧的，验收还会「全绿」（2026-11-06 踩到）")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--compute", default="float16")
     ap.add_argument("--vad", action="store_true",
@@ -484,8 +489,9 @@ def main():
     for idx, path in enumerate(files, 1):
         name = os.path.basename(path)
         out_path = os.path.join(a.out, name + ".json")
-        if os.path.exists(out_path):
-            print("[%d/%d] 跳过（已有结果）%s" % (idx, len(files), name), flush=True)
+        if os.path.exists(out_path) and not a.redo:
+            print("[%d/%d] 跳过（已有结果，加 --redo 可强制重跑）%s" % (idx, len(files), name),
+                  flush=True)
             continue
         t0 = time.time()
         print("[%d/%d] 识别中: %s" % (idx, len(files), name), flush=True)

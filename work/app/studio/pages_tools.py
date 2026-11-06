@@ -2,14 +2,16 @@
 """首页、反馈日志、ASR 暂存管理、设置。"""
 import os
 import threading
+import time
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox,
                                QDialog, QTextBrowser,
                                QFileDialog, QFrame,
-                               QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-                               QMessageBox, QProgressBar, QPushButton, QTableWidget,
-                               QTableWidgetItem, QVBoxLayout, QWidget)
+                               QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+                               QLineEdit, QMessageBox, QPlainTextEdit, QProgressBar,
+                               QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
+                               QVBoxLayout, QWidget)
 
 from . import feedback, models, project as proj, runner as R, settings, store, theme, update
 from .widgets import CardButton, hline, open_path
@@ -104,13 +106,122 @@ class HomePage(Page):
 
 
 # ---------------------------------------------------------------- 反馈日志
+FEEDBACK_KINDS = ("（未分类）", "听错", "人称错", "漏译", "幻觉", "断句", "术语", "其他")
+
+
+class _FeedbackEntry(QWidget):
+    """一条意见：时间点 + 问题类型 + 多行说明 + 删除。"""
+
+    removed = Signal(object)
+
+    def __init__(self, parent=None):
+        super(_FeedbackEntry, self).__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        self.ts = QLineEdit()
+        self.ts.setPlaceholderText("00:34.1")
+        self.ts.setFixedWidth(88)
+        self.ts.setToolTip("这一条对应的时间点；可写 00:34.1 或 34.1")
+        self.kind = QComboBox()
+        self.kind.addItems(FEEDBACK_KINDS)
+        self.kind.setFixedWidth(100)
+        self.kind.setToolTip("问题类型：导出时按类聚合")
+        self.text = QPlainTextEdit()
+        self.text.setPlaceholderText("这一行哪里不对？（可以写多行）")
+        self.text.setMinimumHeight(56)
+        self.text.setMaximumHeight(96)
+        btn = QPushButton("－")
+        btn.setFixedWidth(30)
+        btn.setToolTip("删除这条意见")
+        btn.clicked.connect(lambda: self.removed.emit(self))
+        row.addWidget(QLabel("时间"))
+        row.addWidget(self.ts)
+        row.addWidget(self.kind)
+        row.addWidget(self.text, 1)
+        row.addWidget(btn)
+
+    def value(self):
+        return {
+            "ts": self.ts.text().strip(),
+            "kind": "" if self.kind.currentIndex() == 0 else self.kind.currentText(),
+            "comment": self.text.toPlainText().strip(),
+        }
+
+
+class _TrackCard(QGroupBox):
+    """一条轨道：勾选标题 + 若干条意见 + 「＋ 添加」。"""
+
+    def __init__(self, name, parent=None):
+        super(_TrackCard, self).__init__(parent)
+        self.track_name = name
+        self.setCheckable(True)
+        self.setChecked(False)
+        self.setTitle(name)
+        self.setToolTip(name)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(6)
+        self.rows = []
+        self.box = QVBoxLayout()
+        self.box.setSpacing(6)
+        lay.addLayout(self.box)
+        bar = QHBoxLayout()
+        self.btn_add = QPushButton("＋ 添加一条意见")
+        self.btn_add.setFixedWidth(148)
+        self.btn_add.clicked.connect(self.add_row)
+        bar.addWidget(self.btn_add)
+        bar.addStretch(1)
+        lay.addLayout(bar)
+        self.toggled.connect(self._sync)
+        self.add_row()
+
+    def add_row(self):
+        r = _FeedbackEntry()
+        r.removed.connect(self._drop_row)
+        self.rows.append(r)
+        self.box.addWidget(r)
+        self._sync()
+
+    def _drop_row(self, r):
+        # 至少留一条空行，避免整卡变成空白
+        if len(self.rows) <= 1:
+            r.ts.clear()
+            r.text.clear()
+            r.kind.setCurrentIndex(0)
+            return
+        self.rows.remove(r)
+        r.setParent(None)
+        r.deleteLater()
+
+    def _sync(self):
+        on = self.isChecked()
+        for r in self.rows:
+            r.setEnabled(on)
+        self.btn_add.setEnabled(on)
+
+    def values(self):
+        """勾选了才收；既没时间点也没说明的空条目跳过。"""
+        if not self.isChecked():
+            return []
+        out = []
+        for r in self.rows:
+            d = r.value()
+            if not d["ts"] and not d["comment"]:
+                continue
+            d["track"] = self.track_name
+            out.append(d)
+        return out
+
+
 class FeedbackPage(Page):
     def __init__(self, parent=None):
         super(FeedbackPage, self).__init__(
             "反馈日志",
-            "挑出你觉得奇怪的轨道，写下问题，导出成 txt 发给开发者。"
-            "文件里会带上你的意见、ASR 识别原文、修后原文和当前字幕。", parent)
+            "勾选有问题的轨道，一条意见填一个时间点；同一条轨可以点「＋」加多条。"
+            "导出文件会带上你的意见、问题类型、ASR 识别原文、修后原文和当前字幕。", parent)
         self.entries = []
+        self.cards = []
 
         top = QHBoxLayout()
         top.addWidget(QLabel("选择作品"))
@@ -128,36 +239,35 @@ class FeedbackPage(Page):
         self.empty.setObjectName("Muted")
         self.add(self.empty)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["选择", "轨道", "时间点（可选）", "我的意见"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionMode(QAbstractItemView.NoSelection)
-        hh = self.table.horizontalHeader()
-        hh.setSectionResizeMode(0, QHeaderView.Fixed)
-        self.table.setColumnWidth(0, 52)
-        hh.setSectionResizeMode(1, QHeaderView.Stretch)
-        hh.setSectionResizeMode(2, QHeaderView.Fixed)
-        self.table.setColumnWidth(2, 120)
-        hh.setSectionResizeMode(3, QHeaderView.Stretch)
-        self.table.setMinimumHeight(260)
-        self.add(self.table, 1)
+        # 轨道卡片放进滚动区：6 轨 × 每轨若干条意见，窗口再高也放得下
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.NoFrame)
+        self.host = QWidget()
+        self.host_lay = QVBoxLayout(self.host)
+        self.host_lay.setContentsMargins(0, 0, 8, 0)
+        self.host_lay.setSpacing(8)
+        self.host_lay.addStretch(1)
+        self.scroll.setWidget(self.host)
+        self.add(self.scroll, 1)
 
         opt = QHBoxLayout()
         self.full = QCheckBox("附带全轨原文（不勾选则只给标记时间点附近 ±60 秒）")
         self.full.setChecked(True)
         opt.addWidget(self.full)
         opt.addStretch(1)
-        self.btn_export = QPushButton("导出反馈 txt")
+        self.btn_export = QPushButton("导出反馈")
         self.btn_export.setObjectName("Primary")
         self.btn_export.clicked.connect(self._export)
         opt.addWidget(self.btn_export)
         self.lay.addLayout(opt)
 
-        self.tip = QLabel("提示：时间点可以写 00:12.3 或 12.3；留空则只导出意见与全轨原文。")
+        self.tip = QLabel("提示：时间点可以写 00:34.1 或 34.1；问题类型用来按类聚合。")
         self.tip.setObjectName("Muted")
         self.add(self.tip)
         self.reload()
 
+    # ---------------------------------------------------------------- 数据
     def reload(self):
         self.entries = store.list_stores()
         self.combo.blockSignals(True)
@@ -167,76 +277,95 @@ class FeedbackPage(Page):
         self.combo.blockSignals(False)
         has = bool(self.entries)
         self.empty.setVisible(not has)
-        self.table.setVisible(has)
-        # ⚠️ 隐藏的 widget 仍然占着 addWidget 时给的 stretch，
+        self.scroll.setVisible(has)
+        # 隐藏的 widget 仍然占着 addWidget 时给的 stretch，
         # 不把它清零就会在页面中间留一大片空白。
-        self.lay.setStretch(self.lay.indexOf(self.table), 1 if has else 0)
+        self.lay.setStretch(self.lay.indexOf(self.scroll), 1 if has else 0)
         self.btn_export.setEnabled(has)
         if has:
             self.combo.setCurrentIndex(0)
             self._load_tracks()
 
+    def _clear_cards(self):
+        for c in self.cards:
+            self.host_lay.removeWidget(c)
+            c.setParent(None)
+            c.deleteLater()
+        self.cards = []
+
     def _load_tracks(self):
         i = self.combo.currentIndex()
         if i < 0 or i >= len(self.entries):
             return
-        e = self.entries[i]
-        self.table.setRowCount(0)
-        for tr in e["tracks"]:
-            r = self.table.rowCount()
-            self.table.insertRow(r)
-            chk = QTableWidgetItem()
-            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            chk.setCheckState(Qt.Unchecked)
-            self.table.setItem(r, 0, chk)
-            name = QTableWidgetItem(tr["name"])
-            name.setFlags(Qt.ItemIsEnabled)
-            name.setToolTip(tr["name"])
-            self.table.setItem(r, 1, name)
-            self.table.setItem(r, 2, QTableWidgetItem(""))
-            self.table.setItem(r, 3, QTableWidgetItem(""))
+        self._clear_cards()
+        for tr in self.entries[i]["tracks"]:
+            card = _TrackCard(tr["name"])
+            self.host_lay.insertWidget(self.host_lay.count() - 1, card)
+            self.cards.append(card)
+
+    # ---------------------------------------------------------------- 导出
+    def _collect(self):
+        items = []
+        for c in self.cards:
+            items.extend(c.values())
+        return items
 
     def _export(self):
         i = self.combo.currentIndex()
-        if i < 0:
+        if i < 0 or i >= len(self.entries):
             return
         e = self.entries[i]
-        items = []
-        for r in range(self.table.rowCount()):
-            if self.table.item(r, 0).checkState() != Qt.Checked:
-                continue
-            items.append({
-                "track": self.table.item(r, 1).text(),
-                "ts": self.table.item(r, 2).text() if self.table.item(r, 2) else "",
-                "comment": self.table.item(r, 3).text() if self.table.item(r, 3) else "",
-            })
+        items = self._collect()
         if not items:
-            QMessageBox.information(self, "还没有选轨道", "请先勾选至少一条不满意的轨道。")
+            QMessageBox.information(
+                self, "还没有内容",
+                "请先勾选有问题的轨道，并至少写一条意见（时间点或说明）。")
             return
-        # 让用户选格式：md（默认，人和 AI 都好读）/ json（给脚本）/ txt（旧）
         fb_dir = settings.load_app()["feedback_dir"]
-        os.makedirs(fb_dir, exist_ok=True)
-        default = os.path.join(fb_dir, "feedback_%s_%s.md" % (
-            e["project"], time.strftime("%Y%m%d_%H%M%S")))
+        try:
+            os.makedirs(fb_dir, exist_ok=True)
+            p = os.path.join(fb_dir, "feedback_%s_%s.md" % (
+                e["project"], time.strftime("%Y%m%d_%H%M%S")))
+            text = feedback.build_report(e, items, full=self.full.isChecked(), fmt="md")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception as ex:      # 不再静默失败：写不出来就当场报出来
+            QMessageBox.critical(self, "导出失败", "写入反馈文件时出错：\n%s" % ex)
+            return
+
+        self.tip.setText("上次导出：%s（%d 条意见）" % (p, len(items)))
+        box = QMessageBox(self)
+        box.setWindowTitle("已导出")
+        box.setText("反馈已保存：\n%s\n\n共 %d 条意见。把这个文件发给开发者即可。"
+                    % (p, len(items)))
+        b1 = box.addButton("打开所在文件夹", QMessageBox.ActionRole)
+        b2 = box.addButton("另存为…", QMessageBox.ActionRole)
+        box.addButton("好", QMessageBox.AcceptRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b1:
+            open_path(p)
+        elif clicked is b2:
+            self._save_as(p)
+
+    def _save_as(self, src):
         p, _sel = QFileDialog.getSaveFileName(
-            self, "导出反馈", default,
-            "Markdown（推荐：人和 AI 都好读）(*.md);;JSON（结构化，给脚本用）(*.json);;"
-            "纯文本 (*.txt)")
+            self, "另存为", src, "Markdown (*.md);;JSON (*.json);;纯文本 (*.txt)")
         if not p:
             return
         low = p.lower()
         fmt = "json" if low.endswith(".json") else ("txt" if low.endswith(".txt") else "md")
-        text = feedback.build_report(e, items, full=self.full.isChecked(), fmt=fmt)
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(text)
-        box = QMessageBox(self)
-        box.setWindowTitle("已导出")
-        box.setText("反馈已生成：\n%s\n\n把这个文件发给开发者即可。" % p)
-        b1 = box.addButton("打开所在文件夹", QMessageBox.ActionRole)
-        box.addButton("好", QMessageBox.AcceptRole)
-        box.exec()
-        if box.clickedButton() == b1:
-            open_path(p)
+        i = self.combo.currentIndex()
+        e = self.entries[i] if 0 <= i < len(self.entries) else {}
+        try:
+            body = feedback.build_report(e, self._collect(),
+                                         full=self.full.isChecked(), fmt=fmt)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(body)
+        except Exception as ex:
+            QMessageBox.critical(self, "另存为失败", str(ex))
+            return
+        open_path(p)
 
 
 # ---------------------------------------------------------------- ASR 暂存管理

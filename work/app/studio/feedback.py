@@ -57,8 +57,7 @@ def _txt_report(entry, items, full=True, app_version=""):
     L.append("      修正后的日文（管线实际拿去翻译的版本）；字幕 = 最终成品。")
     L.append("")
 
-    for it in items:
-        name = it["track"]
+    for name, its in _group_by_track(items):
         lines_asr = store.track_text(entry["path"], "asr", name)
         lines_fix = store.track_text(entry["path"], "fix", name)
         lines_lrc = store.track_text(entry["path"], "lrc", name)
@@ -66,13 +65,18 @@ def _txt_report(entry, items, full=True, app_version=""):
         L.append(bar)
         L.append("【轨道】%s" % name)
         L.append(bar)
-        comment = (it.get("comment") or "").strip()
-        L.append("我的意见：")
-        L.append(comment if comment else "（未填写具体意见）")
+        L.append("我的意见（%d 条）：" % len(its))
+        for it in its:
+            head = _entry_head(it)
+            comment = (it.get("comment") or "").strip().replace("\n", " ")
+            L.append("  · %s%s" % (("[" + head + "] ") if head else "",
+                                   comment or "（未填写具体意见）"))
         L.append("")
 
-        sec = _parse_ts(it.get("ts"))
-        if sec is not None:
+        for it in its:
+            sec = _parse_ts(it.get("ts"))
+            if sec is None:
+                continue
             L.append("▶ 标记时间点 %s 附近：" % _ts(sec))
             for label, lines in (("ASR 原文", lines_asr), ("修后原文", lines_fix),
                                  ("当前字幕", lines_lrc)):
@@ -129,7 +133,36 @@ def _fmt_lines(lines):
     return "\n".join("[%s] %s" % (_ts(t), x) for t, x in lines)
 
 
+def _group_by_track(items):
+    """[{track,ts,kind,comment}] → [(track, [item, ...]), ...]，保持输入顺序。
+
+    一轨可以有多条意见（用户按时间点逐条报），导出时按轨聚合成一节，
+    原文只输出一次，避免同一轨重复贴全文。
+    """
+    groups = []
+    for it in items:
+        name = it.get("track") or ""
+        if groups and groups[-1][0] == name:
+            groups[-1][1].append(it)
+        else:
+            groups.append((name, [it]))
+    return groups
+
+
+def _entry_head(it):
+    """一条意见的抬头：`00:34.10 · 人称错`（缺项自动省略）。"""
+    sec = _parse_ts(it.get("ts"))
+    parts = []
+    if sec is not None:
+        parts.append(_ts(sec))
+    kind = (it.get("kind") or "").strip()
+    if kind:
+        parts.append(kind)
+    return " · ".join(parts)
+
+
 def _md_report(entry, items, full=True, app_version=""):
+    groups = _group_by_track(items)
     L = []
     L.append("# OnseiCraft 字幕反馈")
     L.append("")
@@ -142,39 +175,45 @@ def _md_report(entry, items, full=True, app_version=""):
         L.append("| 软件版本 | %s |" % app_version)
     if entry.get("source"):
         L.append("| 音频目录 | `%s` |" % entry["source"])
-    L.append("| 反馈轨道 | %d 条 |" % len(items))
+    L.append("| 反馈轨道 | %d 条 / 意见 %d 条 |" % (len(groups), len(items)))
     L.append("")
     L.append("> **术语**：`ASR 原文` = 语音识别直出的日文；"
              "`修后原文` = 经确定性错字表修正后、管线实际拿去翻译的日文；"
              "`当前字幕` = 最终成品 LRC。")
     L.append("")
 
-    for i, it in enumerate(items, 1):
-        name = it["track"]
+    for i, (name, its) in enumerate(groups, 1):
         la = store.track_text(entry["path"], "asr", name)
         lf = store.track_text(entry["path"], "fix", name)
         ll = store.track_text(entry["path"], "lrc", name)
-        sec = _parse_ts(it.get("ts"))
+        secs = [s for s in (_parse_ts(x.get("ts")) for x in its) if s is not None]
 
         L.append("---")
         L.append("")
         L.append("## %d. `%s`" % (i, name))
         L.append("")
-        comment = (it.get("comment") or "").strip()
-        L.append("**我的意见**")
+        L.append("**我的意见（%d 条）**" % len(its))
         L.append("")
-        L.append("> %s" % (comment if comment else "（未填写具体意见）"))
+        for it in its:
+            head = _entry_head(it)
+            comment = (it.get("comment") or "").strip().replace("\n", " ")
+            L.append("- %s%s" % (("**%s**：" % head) if head else "", comment or "（未填写具体意见）"))
         L.append("")
-        if sec is not None:
-            L.append("**标记时间点**：`%s`" % _ts(sec))
-            L.append("")
 
         if full:
             pairs = [("ASR 原文（全轨）", la), ("修后原文（全轨）", lf), ("当前字幕（全轨）", ll)]
         else:
-            pairs = [("ASR 原文（±60s）", _near(la, sec, 60.0) if sec is not None else la),
-                     ("修后原文（±60s）", _near(lf, sec, 60.0) if sec is not None else lf),
-                     ("当前字幕（±60s）", _near(ll, sec, 60.0) if sec is not None else ll)]
+            lo = min(secs) if secs else None
+            hi = max(secs) if secs else None
+
+            def win(lines):
+                if lo is None:
+                    return lines
+                return [(t, s) for t, s in lines if lo - 60.0 <= t <= hi + 60.0]
+
+            pairs = [("ASR 原文（标记点 ±60s）", win(la)),
+                     ("修后原文（标记点 ±60s）", win(lf)),
+                     ("当前字幕（标记点 ±60s）", win(ll))]
         for label, lines in pairs:
             L.append("### %s · %d 行" % (label, len(lines)))
             L.append("")
@@ -187,8 +226,9 @@ def _md_report(entry, items, full=True, app_version=""):
 
 def _json_report(entry, items, full=True, app_version=""):
     import json
+    groups = _group_by_track(items)
     out = {
-        "format": "onseicraft-feedback/1",
+        "format": "onseicraft-feedback/2",
         "project": entry.get("project", ""),
         "run_id": entry.get("run_id", ""),
         "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -196,19 +236,26 @@ def _json_report(entry, items, full=True, app_version=""):
         "source": entry.get("source", ""),
         "tracks": [],
     }
-    for it in items:
-        name = it["track"]
+    for name, its in groups:
         la = store.track_text(entry["path"], "asr", name)
         lf = store.track_text(entry["path"], "fix", name)
         ll = store.track_text(entry["path"], "lrc", name)
-        sec = _parse_ts(it.get("ts"))
-        if not full and sec is not None:
-            la, lf, ll = _near(la, sec, 60.0), _near(lf, sec, 60.0), _near(ll, sec, 60.0)
+        secs = [s for s in (_parse_ts(x.get("ts")) for x in its) if s is not None]
+        if not full and secs:
+            lo, hi = min(secs), max(secs)
+
+            def win(lines):
+                return [(t, s) for t, s in lines if lo - 60.0 <= t <= hi + 60.0]
+
+            la, lf, ll = win(la), win(lf), win(ll)
         out["tracks"].append({
             "track": name,
-            "ts": _ts(sec) if sec is not None else "",
-            "ts_sec": sec,
-            "comment": (it.get("comment") or "").strip(),
+            "entries": [{
+                "ts": _ts(_parse_ts(x.get("ts"))) if _parse_ts(x.get("ts")) is not None else "",
+                "ts_sec": _parse_ts(x.get("ts")),
+                "kind": (x.get("kind") or "").strip(),
+                "comment": (x.get("comment") or "").strip(),
+            } for x in its],
             "asr": ["[%s] %s" % (_ts(t), x) for t, x in la],
             "fixed": ["[%s] %s" % (_ts(t), x) for t, x in lf],
             "lrc": ["[%s] %s" % (_ts(t), x) for t, x in ll],
