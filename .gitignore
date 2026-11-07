@@ -77,3 +77,7 @@ dist/
 
 # 本机安装的 OnseiCraft（1.6GB，不进库）
 onseicraft/
+
+# 标准样品集的坏文件（帧结构有问题、已替换）—— 本地留档，不进库
+work/samples/_broken/
+work/samples/_old_*/

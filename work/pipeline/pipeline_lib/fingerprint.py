@@ -40,7 +40,7 @@ GGUF = {
     "gguf_qwen_q4": (r"D:\fasterwhisperGUI-0.8.5.sfx\models\qwen2.5-7b-instruct-gguf"
                      r"\qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"),
 }
-WHISPER_NAME = "faster-whisper-large-v2"   # 2026-11-06 起默认（见 internal/docs/experiments/ASR_AB_20261106.md）
+WHISPER_NAME = "faster-whisper-large-v3"   # 2026-11-08 换回（见 internal/docs/experiments/ASR_V2V3_SAMPLES_20261108.md）
 
 # 每个阶段实际用到的模型（最小闭包）。**空列表 = 该阶段不调模型**：
 # 02/05/06 是纯确定性阶段，以前 names=None 会把 whisper + 全部 gguf 都算进指纹，

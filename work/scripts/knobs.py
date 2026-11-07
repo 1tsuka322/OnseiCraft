@@ -52,7 +52,7 @@ def engine_tag(engine=None):
     return ENGINE_TAGS.get(str(e).strip().lower(), _ENGINE_DEFAULT)
 
 
-_ASR_DEFAULT = "faster-whisper-large-v2"
+_ASR_DEFAULT = "faster-whisper-large-v3"
 
 
 def asr_tag():
