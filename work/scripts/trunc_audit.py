@@ -74,19 +74,29 @@ def main():
             if not t.strip():
                 continue                      # 清屏 spacer 不算
             total += 1
+            # 续行豁免（2026-11-08）
+            # 本行 ≥12 字无句末标点，但**下一行紧接着**（≤1.2 秒）→ 那是同一 cue
+            # 按 `MAX_LINE_SEC=7.0` 拆出来的显示行，不是「被砍掉后半」。
+            # 换 large-v3 后 ASR 段更碎（均 3.3s vs 6.0s）→ 拆行更频繁，
+            # RJ01654115 单部 no_punct 涨到 220 条，全是这个原因。
+            # 不豁免的话真截断会被淹没（R3 是「疑似」，本来就不是硬判据）。
+            nxt_ts, nxt = None, ""
+            for j in range(i + 1, min(i + 4, len(lines))):
+                m2 = TS.match(lines[j])
+                if m2 and m2.group(3).strip():
+                    nxt_ts = int(m2.group(1)) * 60 + float(m2.group(2))
+                    nxt = m2.group(3).strip()
+                    break
+            cur_ts = int(m.group(1)) * 60 + float(m.group(2))
             hs = scan_line(t)
+            if hs and nxt_ts is not None and (nxt_ts - cur_ts) <= 1.2:
+                hs = [h for h in hs if h[0] != "no_punct"]
             if not hs:
                 continue
             for rule, val in hs:
                 by_rule[rule] += 1
                 by_work[rj] += 1
             prev = TS.match(lines[i - 1]).group(3).strip() if i and TS.match(lines[i - 1]) else ""
-            nxt = ""
-            for j in range(i + 1, min(i + 4, len(lines))):
-                m2 = TS.match(lines[j])
-                if m2 and m2.group(3).strip():
-                    nxt = m2.group(3).strip()
-                    break
             rows.append(dict(rj=rj, file=os.path.basename(f), ts=m.group(1) + ":" + m.group(2),
                              zh=t.strip(), prev=prev, next=nxt,
                              rules=[r for r, _ in hs], vals=[v for _, v in hs]))

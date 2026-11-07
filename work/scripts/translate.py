@@ -1070,8 +1070,14 @@ def translate_block(block, prev_ctx, prev_raw=None):
                                   flush=True)
                     else:
                         HALLU["left"] += 1
-                        print("    ⚠️ Sakura 幻觉(%s)未救回：%s -> %s"
-                              % (why, ja[:22], (cand or zh)[:30]), flush=True)
+                        # ⚠️ 2026-11-08：`… -> ……` 这类**纯省略号段**会被幻觉检测判成
+                        # 「nolang」，RJ1058739 单部就刷了 **254 条**同样的告警 ——
+                        # 真问题会被淹没。只留前 3 条样本，其余走末尾汇总行。
+                        _smp = HALLU.setdefault("left_smp", [])
+                        if len(_smp) < 3:
+                            _smp.append("%s→%s" % (ja[:14], (cand or zh)[:18]))
+                            print("    ⚠️ Sakura 幻觉(%s)未救回：%s -> %s"
+                                  % (why, ja[:22], (cand or zh)[:30]), flush=True)
                         out.append(SAKURA_FALLBACK)
                 return out, reply
         return None, reply
@@ -1211,6 +1217,9 @@ def main():
                      HALLU["masked"], HALLU["retried"] - HALLU["left"],
                      HALLU.get("saved_l2", 0), HALLU["left"]),
                   flush=True)
+            if HALLU.get("left_smp"):
+                print("      未救回样本（其余同类不再逐条打印）：%s"
+                      % " / ".join(HALLU["left_smp"]), flush=True)
 
         out = os.path.join(a.out_dir, src + ".lrc")
         rows, dropped = emit_lines(lines, results)
