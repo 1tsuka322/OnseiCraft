@@ -2,6 +2,8 @@
 """三步向导：音频 → 台本 → 生成 → 完成。"""
 import os
 import re
+import subprocess
+import sys
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QCheckBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
@@ -362,6 +364,11 @@ class DonePage(Page):
         self.btn_open.setObjectName("Primary")
         self.btn_open.clicked.connect(lambda: open_path(self.lrc_dir))
         row.addWidget(self.btn_open)
+        self.btn_report = QPushButton("查看问题清单")
+        self.btn_report.setToolTip(
+            "把校验明细渲染成网页：哪几行有问题、日文原文和现译、锁有没有落地")
+        self.btn_report.clicked.connect(self._open_report)
+        row.addWidget(self.btn_report)
         row.addStretch(1)
         cl.addLayout(row)
         self.add(card)
@@ -404,6 +411,38 @@ class DonePage(Page):
         self.btn_home.clicked.connect(lambda: self.window().go_home())
         bar.addWidget(self.btn_home)
         self.lay.addLayout(bar)
+
+    def _open_report(self):
+        """把 06 的门禁明细渲染成 HTML 并用浏览器打开。
+
+        为什么不在软件里直接展示：明细常几十条，QTableWidget 一屏放不下；
+        而且用户经常要「对着日文原文判断」—— 网页能选中、复制、缩放。
+
+        脚本是 `work/scripts/report_html.py`（单文件 HTML，无外部依赖）。
+        渲染失败不影响任何东西，只是弹个提示。
+        """
+        if not self.run_id:
+            return
+        script = os.path.join(settings.ROOT, "scripts", "report_html.py")
+        if not os.path.isfile(script):
+            QMessageBox.warning(self, "找不到脚本",
+                                "report_html.py 不在：\n%s" % script)
+            return
+        try:
+            subprocess.run([sys.executable, script, "--run", self.run_id],
+                           capture_output=True, timeout=90,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except Exception as e:
+            QMessageBox.warning(self, "生成失败", str(e)[:300])
+            return
+        out = os.path.join(settings.ROOT, "runs", self.run_id, "06_checks", "report.html")
+        if os.path.isfile(out):
+            open_path(out)
+        else:
+            QMessageBox.information(
+                self, "还没有校验报告",
+                "这个任务还没跑到「校验」阶段，所以没有明细。\n"
+                "先把整条流程跑完（或续跑）再看。")
 
     def show_result(self, ok, run_id, msg, lrc_dir, project, source):
         self.run_id, self.project, self.lrc_dir, self.source = run_id, project, lrc_dir, source
