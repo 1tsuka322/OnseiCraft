@@ -204,9 +204,13 @@ def metrics(rid):
     out = {"rid": rid}
     # 成品行数/字数/省略号/她
     n = ch = ell = ta = 0
+    by_tags = set()
     for p in glob.glob(os.path.join(RUNS, rid, "05_term_lock", "*", "*.lrc")):
         for line in io.open(p, encoding="utf-8-sig"):
-            m = re.match(r"\[(\d+):(\d+\.\d+)\](.*)", line.strip())
+            s0 = line.strip()
+            if s0.startswith("[by:"):
+                by_tags.add(s0)
+            m = re.match(r"\[(\d+):(\d+\.\d+)\](.*)", s0)
             if not m or not m.group(3).strip():
                 continue
             t = m.group(3)
@@ -218,6 +222,22 @@ def metrics(rid):
                 ta += 1
     out.update({"rows": n, "chars": ch, "avg_len": round(ch / n, 2) if n else 0,
                 "ellipsis_pct": round(100.0 * ell / n, 1) if n else 0, "pronoun": ta})
+
+    # `[by:]` 标签是否与实际 ASR 模型一致（2026-11-08）
+    # 2026-11-06 踩过：`translate.py`/`polish.py` 把 `faster-whisper large-v3` 写死在
+    # 标签里，换模型后**每一份成品的 [by:] 都在撒谎**。收敛到 `knobs.asr_tag()` 之后
+    # 仍然要有独立检查 —— 「声明 == 实际」不能只靠代码自觉。
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        import knobs as _K
+        want = _K.asr_tag()
+        got = " ".join(sorted(by_tags))
+        out["by_ok"] = bool(by_tags) and (want in got)
+        out["by_tag"] = (sorted(by_tags)[0][:46] if by_tags else "（无 [by:]）")
+        out["by_want"] = want
+    except Exception as e:
+        out["by_ok"] = None
+        out["by_tag"] = "检查失败：%s" % str(e)[:30]
 
     # ASR 时间空洞（2026-11-08 新增）
     # RJ1458584 实测：v2 在 247.1→277.1 有 **30 秒空白**，而原文那段是角色
@@ -255,6 +275,18 @@ def metrics(rid):
         out["bad"] = bad
         lk = g.get("locks", {}).get("summary")
         out["locks"] = str(lk)[:28] if lk else ""
+    # 锁落地率（2026-11-08）：130 条人工修复是靠行级锁保住的，
+    # 换 ASR 模型 / 改切分都会让锁的时间戳漂移 → 必须每次都看落地率。
+    lp = os.path.join(d6, "lock_coverage.json")
+    if os.path.isfile(lp):
+        lc = json.load(io.open(lp, encoding="utf-8"))
+        rows = lc.get("rows") or []
+        t = sum(r.get("total", 0) for r in rows)
+        land = sum(r.get("landed", 0) for r in rows)
+        out["lock_total"] = t
+        out["lock_landed"] = land
+        out["lock_misplaced"] = sum(r.get("misplaced", 0) for r in rows)
+        out["lock_rate"] = round(100.0 * land / t, 1) if t else None
     return out
 
 
@@ -318,6 +350,23 @@ def main():
     print("「空洞s」= ASR 相邻段最大间隔；≥15s 标 ! —— 原文可能有整段被漏听"
           "（2026-11-08 RJ1458584：v2 有 30s 空洞，丢掉了 A~H 十四个罩杯字母）")
 
+    # `[by:]` 标签撒谎单独报（不占表宽，但绝不能被忽略）
+    bad_by = [m for m in results if m.get("by_ok") is False]
+    if bad_by:
+        print("\n⚠️ `[by:]` 标签与实际 ASR 模型不符（声明≠实际）：")
+        for m in bad_by:
+            print("  %-11s 实际 %s / 标签 %s" % (m["rj"], m.get("by_want"), m.get("by_tag")))
+
+    # 行级锁落地率：130 条人工修复全靠它，落地率掉了等于修复被冲掉
+    bad_lock = [m for m in results
+                if (m.get("lock_total") or 0) > 0 and (m.get("lock_rate") or 0) < 85]
+    if bad_lock:
+        print("\n⚠️ 行级锁落地率 <85%（人工修复可能被上游重跑冲掉）：")
+        for m in bad_lock:
+            print("  %-11s %d/%d 落地（%.1f%%）错位 %d"
+                  % (m["rj"], m.get("lock_landed"), m.get("lock_total"),
+                     m.get("lock_rate") or 0, m.get("lock_misplaced")))
+
     # ---- 更新价值表（样品集动态进化）----
     import datetime
     day = datetime.date.today().strftime("%Y%m%d")
@@ -361,6 +410,15 @@ def main():
     L.append("")
     L.append("> **空洞s** = ASR 相邻段最大间隔，≥15s 标 `!`。原文可能有整段被漏听——"
              "2026-11-08 实测 RJ1458584 的 v2 有 30s 空洞，丢掉了 A~H 十四个罩杯字母。")
+    bad_by = [m for m in results if m.get("by_ok") is False]
+    L.append("")
+    if bad_by:
+        L.append("## ⚠️ `[by:]` 标签与实际 ASR 模型不符")
+        L.append("")
+        for m in bad_by:
+            L.append("- **%s**：实际 `%s`，标签 `%s`" % (m["rj"], m.get("by_want"), m.get("by_tag")))
+    else:
+        L.append("`[by:]` 标签检查：全部与实际 ASR 模型一致。")
     io.open(out, "w", encoding="utf-8").write("\n".join(L) + "\n")
     print("报表 → %s" % out)
 

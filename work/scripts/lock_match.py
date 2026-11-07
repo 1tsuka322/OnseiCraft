@@ -150,8 +150,26 @@ def build_ja_index(lock_map):
 
 
 def _score(lock_ja, cue_ja, drift, window=WINDOW):
-    """返回 (score, sim)。两边都有日文才算文本分，否则 sim=0 只靠时间项。"""
-    sim = sim_ratio(lock_ja, cue_ja) if (lock_ja and cue_ja) else 0.0
+    """返回 (score, sim)。两边都有日文才算文本分，否则 sim=0 只靠时间项。
+
+    ⚠️ 2026-11-08（换 large-v3 后发现）：v3 把长句切得更碎，锁里记的**完整日文**
+    在新产物里可能只剩半句。实例（RJ1058739）：
+      锁 `あんたも、私も、見たことのないものを、二人で見たい。`
+      新 cue 只有 `見たことのないものを`
+    这时 lcs_ratio ≈ 10/24 = 0.42、jaccard 更低，**双双低于 MIN_SIM=0.55**，
+    锁直接丢失（22 条锁里丢了 4 条，其中 3 条有完整锚点）。
+
+    修法：一方是另一方的**子串**且不短于 5 字 → 视为强匹配（sim 提到 0.78）。
+    安全性：仍然走「取最高分 + TIE 判歧义」，多个候选同样高分时判 ambiguous 不猜。
+    """
+    if lock_ja and cue_ja:
+        sim = sim_ratio(lock_ja, cue_ja)
+        short, long_ = ((cue_ja, lock_ja) if len(cue_ja) <= len(lock_ja)
+                        else (lock_ja, cue_ja))
+        if len(short) >= 5 and short in long_:
+            sim = max(sim, 0.78)
+    else:
+        sim = 0.0
     return 0.7 * sim + 0.3 * (1.0 - min(drift, window) / window), sim
 
 
