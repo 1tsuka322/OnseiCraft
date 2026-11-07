@@ -309,8 +309,12 @@ def cmd_promote(args):
         raise SystemExit("这个 run 是 --allow-loss 放行过的（丢行硬门禁被绕过），"
                          "拒绝直接进生产。确认要推再 --force。")
     gates = (run.stage("06_checks") or {}).get("gate") or {}
-    if not gates.get("ok") and not args.force:
-        raise SystemExit("门禁未过，拒绝进生产（要硬推用 --force）：%s"
+    # 2026-11-06（GPT 议题 4）：交付只看「执行契约 + 输出合法性」，
+    # 质量审计（人称/截断/锁覆盖…）不该拦住交付 —— 那是「仍需审查」。
+    # 旧 run 没有 deliverable_ok 字段，回落到 ok（兼容）。
+    _deliver = gates.get("deliverable_ok", gates.get("ok"))
+    if not _deliver and not args.force:
+        raise SystemExit("门禁未过（执行契约/输出合法性），拒绝进生产（要硬推用 --force）：%s"
                          % json.dumps(gates, ensure_ascii=False)[:200])
     if args.dry_run:
         print("[dry] %d 个文件 %s → %s" % (len(files), src, os.path.join(paths.PROD, rj)))

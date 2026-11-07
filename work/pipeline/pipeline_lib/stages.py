@@ -652,6 +652,7 @@ def stage_checks(ctx):
     gates = ctx.cfg.get("_gates") or ["check", "scan", "errata_audit"]
     res = {}
     all_ok = True
+    deliverable_ok = True
     for g in gates:
         spec = GATE_DEFS[g]
         cmd = spec["cmd"](ctx, d)
@@ -664,16 +665,37 @@ def stage_checks(ctx):
         code, tail, dur = _tee(cmd, os.path.join(d, g + ".log"), env=ctx.env)
         ok = (code == 0)
         summary = _summarize(g, tail, code, d)
-        res[g] = {"ok": ok, "exit": code, "hard": hard,
+        kind = GATE_KIND.get(g, "audit")
+        res[g] = {"ok": ok, "exit": code, "hard": hard, "kind": kind,
                   "duration_sec": dur, "summary": summary}
         if hard and not ok:
             all_ok = False
+            # 只有「执行契约 / 输出合法性」失败才算不可交付。
+            # 审计项即便将来被设成 hard，也不该拦住交付（那是「仍需审查」）。
+            if kind in ("contract", "output"):
+                deliverable_ok = False
     if ctx.dry:
         return {"outputs": [], "gate": None, "extra": {"dry_run": True}}
+    # ---- 报告分两块（GPT 议题 4：防止用户把「绿色」理解成「翻译无误」）----
+    print("\n[06_checks] 可交付判定（执行契约 + 输出合法性）", flush=True)
+    for g in gates:
+        r = res.get(g)
+        if not r or r["kind"] not in ("contract", "output"):
+            continue
+        print("  %s %-16s %s" % ("✅" if r["ok"] else "❌", g, r["summary"]), flush=True)
+    audits = [(g, r) for g, r in res.items() if r["kind"] == "audit"]
+    if audits:
+        print("[06_checks] 仍需审查（质量审计，不影响交付）", flush=True)
+        for g, r in audits:
+            print("  %s %-16s %s" % ("·" if r["ok"] else "⚠️", g, r["summary"]), flush=True)
     json.dump(res, open(os.path.join(d, "gates.json"), "w", encoding="utf-8"),
               ensure_ascii=False, indent=1)
+    by_kind = {}
+    for g, r in res.items():
+        by_kind.setdefault(r["kind"], []).append(g)
     return {"outputs": [manifest.dir_rec(d, "*.json")],
-            "gate": {"ok": all_ok, "detail": res},
+            "gate": {"ok": all_ok, "deliverable_ok": deliverable_ok,
+                     "by_kind": by_kind, "detail": res},
             "extra": {"gates": res}}
 
 
@@ -844,8 +866,35 @@ STAGES = {
     },
 }
 
-ORDER = ["01_asr", "02_asr_fix", "03_translate", "04_polish", "05_term_lock", "06_checks"]
+# ---------------------------------------------------------------- 门禁分类
+# 2026-11-06（GPT 议题 4）：门禁的价值被混在一起了 —— 「拦住错误」和
+# 「让人知道要看哪里」是两件事，用 hard/soft 二分表达不清楚。
+# 实测佐证：三次大规模重跑里被门禁拦下的都是小回归（音译误报、半角标点），
+# 真正的问题（假绿、知识表降级）**一个都没抓到**。
+#
+# 三类（**单一真相，改分类只改这张表**）：
+#   contract 执行契约：输入/知识包/产物集合/依赖来源不成立 → 阻止交付
+#   output   输出合法性：格式与明确内容约束 → 按风险设硬门禁
+#   audit    质量审计：给排序候选，**不判失败**（人称/截断/对齐/锁覆盖…）
+GATE_KIND = {
+    # —— 执行契约 ——
+    "empty": "contract",            # 空字幕 = 产物集合不完整
+    "errata_audit": "contract",     # 知识表自检 44/44，表坏了跑不了
+    "test_regressions": "contract", # 代码回归契约
+    # —— 输出合法性 ——
+    "check": "output",              # 格式/标点/长度
+    "lexical": "output",            # 拟声/音译白名单
+    # —— 质量审计（只报不改）——
+    "scan": "audit",
+    "overlay": "audit",
+    "trunc": "audit",
+    "slot_guard": "audit",
+    "locks": "audit",
+    "semantic": "audit",
+    "person_audit": "audit",
+}
 
+ORDER = ["01_asr", "02_asr_fix", "03_translate", "04_polish", "05_term_lock", "06_checks"]
 
 # ---------------------------------------------------------------- 执行
 def _miss_reason(prev, fp, params, inputs, know, code, models=None):
@@ -905,6 +954,11 @@ def execute(run, name, cfg, force=False, dry=False):
     # 「用 34 条 presets」和「用 138 条私有表」在验收层面**无法区分**。
     # 记下来源类型 + identity（跨机可比）+ 哪些能力因缺表而未启用；路径只作本地诊断。
     try:
+        # `styleloc.py` 在 scripts/ 下，stages.py 在 pipeline/ 下 —— 不把 scripts
+        # 加进 sys.path 会 import 失败，而 except 会把它吞成 {"error": ...}，
+        # 结果 knowledge_package 永远记着一条 error（2026-11-07 实测踩到）。
+        if paths.SCRIPTS not in sys.path:
+            sys.path.insert(0, paths.SCRIPTS)
         import styleloc as _SL
         _kp = _SL.resolve()
         _kp_rec = {"identity": _kp["identity"], "source_type": _kp["source_type"],
