@@ -332,11 +332,27 @@ def stage_asr(ctx):
     except Exception:
         _ins = []
     _outs = glob.glob(os.path.join(target, "*.json"))
-    if _ins and len(_outs) < len(_ins):
+    # ⚠️ 只数 json 个数是**不够的**（2026-11-07 实测）：asr.py 单轨失败时会写一个
+    # `{"segments": [], "error": "..."}` 留痕文件 —— 个数对得上，内容却是空的。
+    # RJ1667609 就是这样「1 个输入 / 1 个 json / 0 行字幕」一路绿到 06，
+    # 最后靠 empty 门禁兜住。所以判据必须是**有效产物**：segments 非空且无 error。
+    _bad = []
+    for _jp in _outs:
+        try:
+            _d = json.load(open(_jp, encoding="utf-8"))
+            if not (_d.get("segments") or []) or _d.get("error"):
+                _bad.append(os.path.basename(_jp)[:40])
+        except Exception:
+            _bad.append(os.path.basename(_jp)[:40])
+    _valid = len(_outs) - len(_bad)
+    print("[01_asr] 对账：source=%r 输入音频 %d 个 / target=%r 产出 json %d 个（有效 %d）"
+          % (ctx.source, len(_ins), target, len(_outs), _valid), flush=True)
+    if _ins and _valid < len(_ins):
         raise RuntimeError(
-            "01_asr 产出不完整：%d 个 json / %d 个输入音频（缺 %d 轨）—— "
-            "asr.py 单轨失败时退出码仍是 0，这里必须拦下"
-            % (len(_outs), len(_ins), len(_ins) - len(_outs)))
+            "01_asr 产出不完整：%d 个有效 json / %d 个输入音频（缺 %d 轨）—— "
+            "asr.py 单轨失败时退出码仍是 0，这里必须拦下。"
+            "无效轨：%s"
+            % (_valid, len(_ins), len(_ins) - _valid, "、".join(_bad[:4]) or "（无 json）"))
     fallback = []
     align_failed = False
     if ctx.script_dir:
