@@ -121,7 +121,11 @@ def main():
             # meta.md 这类成品元信息，本来就不进 outputs —— 拿它做集合核对必然误报。
             if not sname.startswith(("01_", "02_", "03_", "04_", "05_", "06_")):
                 continue
-            for rec in (st.get("outputs") or []):
+            # ⚠️ repair 改过产物时，新哈希记在 `outputs_after_repair`，原 `outputs`
+            # 保留「模型刚跑完的样子」（cli._repair_impl 的设计）。对账必须用前者，
+            # 否则每一次合法 repair 都会被这条声明误报成「内容变了」。
+            _recs = st.get("outputs_after_repair") or st.get("outputs") or []
+            for rec in _recs:
                 if not isinstance(rec, dict):
                     continue
                 rec_files = rec.get("files") or []
