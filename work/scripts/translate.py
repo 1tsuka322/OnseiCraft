@@ -102,6 +102,33 @@ if PERSON_LOCK:
 # 先 A/B 再决定要不要默认开。
 STYLE_RULES = os.environ.get("KIKOERU_STYLE_RULES", "0") in ("1", "true", "True")
 
+# ---------- 术语对照表注入（KIKOERU_GLOSSARY，默认开）----------
+# 2026-11-07 发现：`glossary.json` 在当前默认路线下**完全没生效**。
+# 它只被 polish.py 读，而 polish 里只用它做 `dejapanize`（清掉译文残留的假名），
+# 不是「把错译改成标准译法」；而现行路线是 `polish_cleanup_only=true`（04 不过 LLM），
+# 连 dejapanize 那步都只是确定性替换。
+# 结果：approve 了 `班の子たち→同组的人`，成品里还是「班上的同学」。
+# 这里把术语表接进翻译 prompt —— 词映射比抽象规则有效（PERSON_LOCK 的教训）。
+GLOSSARY_HINT = os.environ.get("KIKOERU_GLOSSARY", "1") in ("1", "true", "True")
+if GLOSSARY_HINT:
+    try:
+        import styleloc as _sl_g
+        _g = json.load(open(os.path.join(_sl_g.style_dir(), "glossary.json"),
+                            encoding="utf-8"))
+        _rows = []
+        for _ja, _v in _g.items():
+            _zh = (_v or {}).get("zh") if isinstance(_v, dict) else None
+            # 只收「术语级」：日文 2~8 字、中文 ≤8 字。太长的句子级映射会干扰翻译。
+            if _zh and 2 <= len(_ja) <= 8 and len(_zh) <= 8:
+                _rows.append("%s→%s" % (_ja, _zh))
+        if _rows:
+            SAKURA_SYSTEM = (SAKURA_SYSTEM
+                             + "\n\n# 【术语对照表】以下词按右边译法，不要自创：\n"
+                             + "；".join(_rows[:70]))
+    except Exception as _e:
+        print("⚠️ KIKOERU_GLOSSARY=1 但 glossary 读取失败（术语表未生效）：%s" % _e,
+              flush=True)
+
 # ---------- 角色事实（KIKOERU_ROLE_FACT，实验用）----------
 # GPT 2026-11-06 议题 1：第三种形态值得**一次小实验**，不值得直接架构化。
 # 关键是「**替换**泛化人称规则，而不是追加提示」—— 逐句 hint 已证灾难性失败
