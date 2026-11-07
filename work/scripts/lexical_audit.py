@@ -68,7 +68,10 @@ KANJI = re.compile(r"[\u4e00-\u9fff\u3005\u3006]")
 KANA = re.compile(r"[\u3040-\u309f\u30a0-\u30ff]")
 KANA_ONLY = re.compile(r"^[\u3040-\u309f\u30a0-\u30ff\u30fc]+$")
 # 中文侧「全虚词」的允许集：y=语气 e=叹词 w=标点 o=拟声 x=非语素字
-FUNC_FLAGS = ("y", "e", "w", "o", "x")
+# ⚠️ 2026-11-07：`o`（拟声词）**不能算虚词**。拟声译拟声（ドクドクする→噗通噗通）是
+# 正确译法，把它当「实词脱落」是判据缺陷 —— 全库重跑时 RJ1623028/RJ1065777 都卡在这条上。
+# 虚词只保留：y 语气 / e 叹词 / w 符号 / x 非语素字。
+FUNC_FLAGS = ("y", "e", "w", "x")
 # ⚠️ jieba 的标注和 ICTCLAS 不一样，光看 flag 会漏：
 #   `哒` → zg（状态词语素）、`哈` → j（简称略语）、`咻` → g（语素）
 # 这些字的**词性标签本身就有误导性**（"哒"明明是拟声），所以补一条「字形兜底」：
@@ -306,6 +309,10 @@ def zh_is_all_function(zh):
     if not toks:
         return False
     for w, flag in toks:
+        if flag and flag[0] == "o":
+            # 拟声词承载信息（`ドクドクする`→`噗通噗通`、`ぐびっこびっこ`→`咕嘟咕嘟`）。
+            # 拟声译拟声是正确译法，不能判「实词脱落」。判成虚词会让全库所有拟声行被硬拦。
+            return False
         if flag and flag[0] in FUNC_FLAGS:
             continue
         # 字形兜底：整个 token 都是叹词/拟声字（治 jieba 把「哒」标成 zg 这类）
@@ -525,6 +532,12 @@ def audit_row(ja, zh, cfg):
     if has and zh_is_ellipsis_only(zh):
         return "ellipsis_only", {"ja": ja[:60], "zh": zh[:60]}
     if has and zh_is_all_function(zh):
+        # 白名单里的拟声/专名（`咕嘟咕嘟`←ぐびっこびっこ）会被判成「全虚词」，
+        # 因为 jieba 把它们标成 `o`（拟声）。那是**合法译法**，不是脱落。
+        # 2026-11-07 实测：RJ1623028 的 831.05 就卡在这条上，硬门禁误拦。
+        _ok = cfg.get("ok") or ()
+        if any(w and len(w) >= 2 and w in zh for w in _ok):
+            return None
         return "content_drop", {"ja": ja[:60], "zh": zh[:60],
                                 "tokens": ["%s/%s" % t for t in zh_tokens(zh)][:8]}
     hit = find_translit(zh, ja, cfg["translit_ratio"], cfg.get("ok"))
