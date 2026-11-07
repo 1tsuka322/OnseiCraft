@@ -56,17 +56,25 @@ def squash(s):
     return PUNCT.sub("", s or "")
 
 
-def track_text(lrc_dir, fn):
-    """该轨成品的全文（去标点）。fn 可带或不带 .lrc。"""
+def parse_ts(s):
+    """`[00:11.96]` → 11.96 秒。解析不出来返回 None。"""
+    m = re.match(r"\[(\d+):(\d+(?:\.\d+)?)\]", (s or "").strip())
+    if not m:
+        return None
+    return int(m.group(1)) * 60 + float(m.group(2))
+
+
+def track_lines(lrc_dir, fn):
+    """该轨成品的 [(秒, 去标点中文)]。fn 可带或不带 .lrc。"""
     p = os.path.join(lrc_dir, fn if fn.endswith(".lrc") else fn + ".lrc")
     if not os.path.exists(p):
         return None
-    buf = []
+    out = []
     for line in open(p, encoding="utf-8"):
         m = TS.match(line.strip())
         if m:
-            buf.append(m.group(3))
-    return squash("".join(buf))
+            out.append((int(m.group(1)) * 60 + float(m.group(2)), squash(m.group(3))))
+    return out
 
 
 def audit_one(rj, lrc_root):
@@ -79,7 +87,8 @@ def audit_one(rj, lrc_root):
         return {"rj": rj, "error": str(e)}
     lrc_dir = os.path.join(lrc_root, rj)
     cache = {}
-    landed, missing, no_anchor, unreadable = [], [], [], []
+    landed, misplaced, missing, no_anchor, unreadable = [], [], [], [], []
+    TOL = 3.0     # 锁文允许的时间漂移（秒）：切分变了会小幅漂，但不该跨句
     for k, v in (d or {}).items():
         if "|" not in k:
             continue
@@ -93,25 +102,37 @@ def audit_one(rj, lrc_root):
             unreadable.append({"key": k, "why": "锁文为空"})
             continue
         if fn not in cache:
-            cache[fn] = track_text(lrc_dir, fn)
-        txt = cache[fn]
-        if txt is None:
+            cache[fn] = track_lines(lrc_dir, fn)
+        lines = cache[fn]
+        if lines is None:
             unreadable.append({"key": k, "why": "成品里没有这一轨"})
             continue
         # ⚠️ 不做「去说话人前缀」的宽容匹配：`甘：`/`白：` 是**台本的角色归属**，
         # 属于内容而不是格式。锁里有、成品里没有 = 真的丢了，必须如实报出来。
         # （2026-10-31 一度按「格式开关」去剥，被用户当场纠正——那会静默删掉
         #  人工锁里的说话人标签。）
-        if z in txt:
-            landed.append(k)
-        else:
+        #
+        # ⚠️ 2026-11-07 GPT 评审 B3：原来 `z in txt`（整轨子串）就算落地，
+        # **没证明它出现在正确位置**。同一句话在别的行出现也会被判落地。
+        # 现在要求「锁文所在行的时间 ≈ 锁记录的时间」才算落地，否则归 misplaced。
+        hit_ts = [t for t, line in lines if z in line]
+        if not hit_ts:
             rec = {"key": k, "zh": zh[:60], "ja": ja[:60]}
             (missing if ja.strip() else no_anchor).append(rec)
-    return {"rj": rj, "total": len(landed) + len(missing) + len(no_anchor) + len(unreadable),
-            "landed": len(landed), "missing": len(missing),
+            continue
+        lock_t = parse_ts(ts)
+        if lock_t is None or any(abs(t - lock_t) <= TOL for t in hit_ts):
+            landed.append(k)
+        else:
+            misplaced.append({"key": k, "zh": zh[:60],
+                              "lock_t": lock_t, "found_t": hit_ts[:4]})
+    return {"rj": rj,
+            "total": len(landed) + len(misplaced) + len(missing) + len(no_anchor) + len(unreadable),
+            "landed": len(landed), "misplaced": len(misplaced), "missing": len(missing),
             "no_anchor": len(no_anchor),
             "unreadable": len(unreadable),
-            "miss_detail": missing[:200], "no_anchor_detail": no_anchor[:200],
+            "miss_detail": missing[:200], "misplaced_detail": misplaced[:200],
+            "no_anchor_detail": no_anchor[:200],
             "unreadable_detail": unreadable[:40]}
 
 
@@ -134,7 +155,7 @@ def main():
     else:
         ap.error("要给 --rj 或 --all")
 
-    rows, tot, miss, noanc = [], 0, 0, 0
+    rows, tot, miss, noanc, mispl = [], 0, 0, 0, 0
     for rj in rjs:
         r = audit_one(rj, a.lrc)
         if not r:
@@ -146,18 +167,19 @@ def main():
         tot += r["total"]
         miss += r["missing"]
         noanc += r["no_anchor"]
+        mispl += r["misplaced"]
 
     if not a.quiet:
-        print("%-11s %6s %6s %6s %8s %6s %7s"
-              % ("作品", "锁数", "落地", "丢失", "无锚点", "不可判", "落地率"))
+        print("%-11s %6s %6s %6s %6s %8s %6s %7s"
+              % ("作品", "锁数", "落地", "错位", "丢失", "无锚点", "不可判", "落地率"))
         for r in rows:
             rate = (100.0 * r["landed"] / r["total"]) if r["total"] else 0.0
-            print("%-11s %6d %6d %6d %8d %6d %6.1f%%"
-                  % (r["rj"], r["total"], r["landed"], r["missing"],
+            print("%-11s %6d %6d %6d %6d %8d %6d %6.1f%%"
+                  % (r["rj"], r["total"], r["landed"], r["misplaced"], r["missing"],
                      r["no_anchor"], r["unreadable"], rate))
-        print("\n合计 %d 条锁：落地 %d / 丢失 %d / 无锚点待人工 %d / 不可判 %d"
-              % (tot, tot - miss - noanc - sum(r["unreadable"] for r in rows),
-                 miss, noanc, sum(r["unreadable"] for r in rows)))
+        print("\n合计 %d 条锁：落地 %d / 错位 %d / 丢失 %d / 无锚点待人工 %d / 不可判 %d"
+              % (tot, tot - miss - noanc - mispl - sum(r["unreadable"] for r in rows),
+                 mispl, miss, noanc, sum(r["unreadable"] for r in rows)))
         bad = [r for r in rows if r["missing"]]
         if bad:
             print("\n丢失明细（有锚点却没落地，每部最多列 5 条，看 json 拿全量）：")
