@@ -313,14 +313,24 @@ class PipelineRunner(QThread):
         try:
             cli.cmd_promote(args)
         except SystemExit as e:
-            # 门禁没过等情况：不阻断交付，但把成品直接放到输出目录并告警
-            self.sig_log.emit("⚠️ 未进生产目录：%s" % e)
-            dst = os.path.join(job.get("out_dir") or paths.PROD, rj)
+            # 门禁没过：**绝不能**写进成品目录。
+            # 2026-11-07 GPT 评审指出：这里原来 `dst = job.get("out_dir") or paths.PROD`
+            # 然后 shutil.copy2 —— 日志说「未进生产目录」，实际却把未经门禁的字幕
+            # 直接铺进了 paths.PROD，成了 acceptance 的对账基准。声明与行为相反。
+            #
+            # 但也不能让用户白等 —— 放到明确的隔离目录，名字带 `_` 前缀，
+            # 既不会被 acceptance 当成成品（它按 RJ 号扫），用户也能拿到文件。
+            self.sig_log.emit("⚠️ 门禁未过，字幕**不进成品目录**：%s" % e)
+            base = job.get("out_dir") or paths.PROD
+            dst = os.path.join(base, "_未过门禁", rj)
             os.makedirs(dst, exist_ok=True)
             import shutil
             for f in files:
                 shutil.copy2(f, os.path.join(dst, os.path.basename(f)))
-            self.sig_log.emit("已直接复制 %d 个字幕到 %s（未经门禁保护）" % (len(files), dst))
+            self.sig_log.emit(
+                "已导出 %d 个字幕到 %s\n"
+                "  ⚠️ 这个目录是隔离区：内容**未通过门禁**，不要直接当成品用。\n"
+                "  run 目录里的原始产物：%s" % (len(files), dst, src))
             return dst
         except Exception as e:
             # 六阶段都成功了却卡在 promote —— 这是最让人困惑的一种失败：

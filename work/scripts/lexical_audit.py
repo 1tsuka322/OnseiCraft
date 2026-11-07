@@ -185,6 +185,13 @@ def _fugashi():
 
 _STRIP_KANA = re.compile(r"[あいうえおアイウエオっッんンー・\s\u3000、。，．\.!?！？…‥「」『』（）()]")
 KATA_RUN = re.compile(r"[\u30a0-\u30ff\u30fc]{2,}")
+# 纯假名（平/片/长音）—— 短词当拟声候选（见 ja_content_profile）
+KANA_ONLY = re.compile(r"^[\u3040-\u309f\u30a0-\u30ff\u30fc]+$")
+# 中文侧的「命题词」词性首字母：名词 n / 动词 v / 形容词 a / 代词 r / 数词 m /
+# 量词 q / 时间 t / 处所 s / 方位 f / 区别 b / 成语 i / 习用语 l。
+# 拟声 o、叹词 e、语气 y、符号 w/x、助词 u、介词 p、连词 c 都不算 ——
+# GPT 2026-11-07 B1：「原文有命题内容、译文只有拟声」不能因为出现 o 就通过。
+ZH_PROP_HEAD = set("nvarmqt sf bil".replace(" ", ""))
 # unidic 的 pos1 里算「实词」的几类（接続詞 / 感動詞 / 助詞 / 助動詞 / 補助記号 都不算）
 CONTENT_POS = {"名詞", "動詞", "形容詞", "形状詞", "副詞", "連体詞", "代名詞"}
 
@@ -303,6 +310,49 @@ def zh_tokens(zh):
     return [(w.word, w.flag) for w in j[1].cut(zh or "") if w.word.strip()]
 
 
+def ja_content_profile(ja):
+    """日文侧的**命题内容量**：实词个数 + 有没有否定。
+
+    2026-11-07 GPT 评审 B1：不能只看「译文是不是全拟声/叹词」，
+    要看**原文有没有命题内容**。
+      · `ドクドクする`（拟声+补助动词）→ n=0 → 译文「噗通噗通」不该报
+      · `ドクドクして止まらない`（+自立动词+否定）→ n=1, neg=True → 该报
+        （只译「扑通扑通」丢了「停不下来」）
+      · `やっぱり責められるの好きなんだ` → n>=2 → 该报
+    返回 {"n": int, "neg": bool}。分词器不可用时按汉字有无给保守值。
+    """
+    out = {"n": 0, "neg": False}
+    if not ja or not ja.strip():
+        return out
+    # 否定形态：动词/形容词的ない形、ません、ぬ、なかっ
+    if re.search(r"(ない|ません|なかった|なかっ|ぬ|ず)(?![ぁ-ん])", ja):
+        out["neg"] = True
+    tg = _fugashi()
+    if not tg:
+        # 没分词器：含汉字就当 1 个实词（宁可报，不放过）
+        out["n"] = 1 if KANJI.search(ja) else 0
+        return out
+    try:
+        for w in tg(ja):
+            f = w.feature
+            pos1 = getattr(f, "pos1", "") or ""
+            pos2 = getattr(f, "pos2", "") or ""
+            surf = w.surface or ""
+            # 非自立（して/する 这类补助动词）与接尾不算命题内容
+            if pos1 not in CONTENT_POS or pos2 in ("非自立", "接尾"):
+                continue
+            # ⚠️ 纯假名短词一律当**拟声候选**，不计命题内容。
+            #    unidic 把 `ドクドク` 切成 `ドク/ドク`（两个副詞）、把 `しゅわ` 标副詞，
+            #    不排除的话 `ドクドクする` 会算成 n=2，联合判据就永远判 hard。
+            #    代价：`かわいい` 这类短假名形容词会被漏计 —— 宁可 soft，不硬拦。
+            if len(surf) <= 6 and KANA_ONLY.match(surf):
+                continue
+            out["n"] += 1
+    except Exception:
+        out["n"] = 1 if KANJI.search(ja) else 0
+    return out
+
+
 def zh_is_all_function(zh):
     """中文整行是不是只剩语气/叹词/标点/拟声。空行不算（那是 empty 门禁的事）。"""
     toks = zh_tokens(zh)
@@ -321,6 +371,37 @@ def zh_is_all_function(zh):
         # 其余一律算「有内容」
         return False
     return True
+
+
+def zh_has_substantive_char(zh):
+    """译文里有没有承载实义的汉字（兜住 jieba 分词/词性错误）。
+
+    2026-11-07 实测两条误报：
+      · `还是别说了吧` → jieba 把「别说」标成 `c`（连词）→ 命题词数 0
+      · `不对！不对…！` → 被切成 `不/d` + `对/p` → 命题词数 0
+    两条日文都有 2 个实词，其实是正常翻译。
+    所以补一条字形兜底：token 不是拟声/叹词/语气/标点，且含**非拟声汉字** → 有内容。
+    """
+    for w, flag in zh_tokens(zh):
+        if flag and flag[0] in ("o", "e", "y", "w", "x"):
+            continue        # 拟声/叹词/语气/标点：`噗通` 是 `o`，不能当实义
+        for ch in w:
+            if "\u4e00" <= ch <= "\u9fff" and ch not in INTERJ_CHARS:
+                return True
+    return False
+
+
+def zh_proposition_count(zh):
+    """中文侧的命题词个数（拟声/叹词/语气/标点都不算）。
+
+    与 `zh_is_all_function` 的区别：后者把拟声 `o` 算内容（拟声译拟声合法），
+    这里专门回答「译文到底有没有**承载信息**的词」——用于和日文侧对比。
+    """
+    n = 0
+    for w, flag in zh_tokens(zh):
+        if flag and flag[0] in ZH_PROP_HEAD:
+            n += 1
+    return n
 
 
 def zh_is_ellipsis_only(zh):
@@ -531,15 +612,23 @@ def audit_row(ja, zh, cfg):
     # 先判纯省略，两者才分得开。
     if has and zh_is_ellipsis_only(zh):
         return "ellipsis_only", {"ja": ja[:60], "zh": zh[:60]}
-    if has and zh_is_all_function(zh):
-        # 白名单里的拟声/专名（`咕嘟咕嘟`←ぐびっこびっこ）会被判成「全虚词」，
-        # 因为 jieba 把它们标成 `o`（拟声）。那是**合法译法**，不是脱落。
-        # 2026-11-07 实测：RJ1623028 的 831.05 就卡在这条上，硬门禁误拦。
+    if has:
+        # ---- 联合判据（GPT 2026-11-07 B1）----
+        # 不看「译文是不是全拟声/叹词」（那受 jieba 词性波动影响），
+        # 而是比较**原文命题内容量**和**译文命题词数**：
+        #   原文 n>=2 或有否定 + 译文 n_zh==0  → hard（明显坍缩）
+        #   原文内容很少       + 译文 n_zh==0  → soft（降审计，不硬拦）
+        prof = ja_content_profile(ja)
+        n_zh = zh_proposition_count(zh)
         _ok = cfg.get("ok") or ()
-        if any(w and len(w) >= 2 and w in zh for w in _ok):
-            return None
-        return "content_drop", {"ja": ja[:60], "zh": zh[:60],
-                                "tokens": ["%s/%s" % t for t in zh_tokens(zh)][:8]}
+        _in_ok = any(w and len(w) >= 2 and w in zh for w in _ok)
+        if n_zh == 0 and not _in_ok and not zh_has_substantive_char(zh):
+            sev = "hard" if (prof["n"] >= 2 or prof["neg"]) else "soft"
+            # soft 用独立 kind：`bad` 只累加 content_drop，soft 自动不进硬门禁。
+            return ("content_drop" if sev == "hard" else "content_drop_soft"), {
+                "ja": ja[:60], "zh": zh[:60], "severity": sev,
+                "ja_n": prof["n"], "ja_neg": prof["neg"], "zh_n": n_zh,
+                "tokens": ["%s/%s" % t for t in zh_tokens(zh)][:8]}
     hit = find_translit(zh, ja, cfg["translit_ratio"], cfg.get("ok"))
     if hit:
         return "translit", {"ja": ja[:60], "zh": zh[:60],
@@ -719,10 +808,11 @@ def main():
         out_rows.append(rec)
         if not a.quiet:
             c = {k: sum(1 for h in rec["hits"] if h["kind"] == k)
-                 for k in ("content_drop", "ellipsis_only", "translit", "latin2")}
-            print("%-11s 行 %6d  实词脱落 %3d  纯省略 %3d  音译 %3d  拉丁2 %3d"
-                  % (rj, rec["rows"], c["content_drop"], c["ellipsis_only"],
-                     c["translit"], c["latin2"]))
+                 for k in ("content_drop", "content_drop_soft", "ellipsis_only",
+                           "translit", "latin2")}
+            print("%-11s 行 %6d  实词脱落 %3d（+软 %2d）  纯省略 %3d  音译 %3d  拉丁2 %3d"
+                  % (rj, rec["rows"], c["content_drop"], c["content_drop_soft"],
+                     c["ellipsis_only"], c["translit"], c["latin2"]))
 
     if not a.quiet:
         print("\n合计 %d 行：实词脱落 %d / 纯省略 %d / 音译 %d / 拉丁2 %d"
