@@ -161,6 +161,36 @@ def _ns_kw():
     return {"no_speech_threshold": float(NS_THRESHOLD)}
 
 
+def _transcribe_with_fallback(model, audio, vad=False):
+    """整轨/分块识别，带降级重试。返回 (segments_list, info, fallback_tag)。
+
+    ⚠️ 2026-11-07 实测（RJ1667609 巫女轨，faster-whisper 1.2.1）：
+      `condition_on_previous_text=False` + `word_timestamps=True` + `beam_size=5`
+      **三者同时满足**时，某类音频会抛
+        IndexError: boolean index did not match indexed array along axis 0
+      崩在 `for s in segments` **迭代时**（不是 transcribe 返回时），所以外层
+      try 能兜住，但整条轨直接作废。逐项排除：
+        去掉 word_timestamps     → 正常（但丢词级时间戳，管线 5 处依赖）
+        beam_size=1              → 正常（只降搜索宽度，词级时间戳保住）
+      是上游对齐阶段 `all_tokens` 索引越界，我们改不了，只能降级。
+
+    降级顺序：beam 5 → 1。**不动 word_timestamps**（它是硬依赖）。
+    """
+    kw = dict(language="ja", vad_filter=vad, condition_on_previous_text=False,
+              word_timestamps=True, initial_prompt="以下是一段日语对话的转写。",
+              **_ns_kw())
+    try:
+        segs, info = model.transcribe(audio, beam_size=5, **kw)
+        return list(segs), info, None
+    except IndexError as e:
+        if "boolean index" not in str(e):
+            raise
+        print("    [降级重试] word_timestamps+beam5 触发上游 IndexError → beam_size=1",
+              flush=True)
+        segs, info = model.transcribe(audio, beam_size=1, **kw)
+        return list(segs), info, "beam1"
+
+
 r"""Whisper 在静音/音乐/呼吸段会套用训练语料里的 YouTube 套话编造台词。
 
 音声作品里不可能出现"下集视频见""本片字幕由观众制作""感谢收看"这类句子，
@@ -390,11 +420,7 @@ def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", facto
         if len(seg) < 16000:
             break
         try:
-            segments, _ = model.transcribe(
-                seg, language="ja", beam_size=5, vad_filter=False,
-                condition_on_previous_text=False, word_timestamps=True,
-                initial_prompt="以下是一段日语对话的转写。", **_ns_kw(),
-            )
+            segments, _, _fb = _transcribe_with_fallback(model, seg, vad=False)  # 块内降级只影响该块
         except Exception as e:
             print("    [块失败] %.0fs: %s" % (pos, str(e)[:120]), flush=True)
             pos += step
@@ -532,6 +558,7 @@ def main():
         dropped = []
         collapsed = []
         _long = False
+        _beam_fb = None      # 记录本条轨是否降级过（写进 asr_meta）
         if not a.chunked:
             _d = probe_duration(path)
             if _d > RELOAD_SEC > 0:
@@ -540,11 +567,7 @@ def main():
                       % (_d / 60.0, RELOAD_SEC / 60.0), flush=True)
         try:
             if not a.chunked and not _long:
-                segments, info = model.transcribe(
-                    path, language="ja", beam_size=5, vad_filter=a.vad,
-                    condition_on_previous_text=False, word_timestamps=True,
-                    initial_prompt="以下是一段日语对话的转写。", **_ns_kw(),
-                )
+                segments, info, _beam_fb = _transcribe_with_fallback(model, path, vad=a.vad)
                 data = []
                 for s in segments:
                     if is_silence_seg(s):
@@ -610,6 +633,8 @@ def main():
                             "device": a.device, "compute": a.compute,
                             "vad": bool(a.vad), "chunked": bool(a.chunked),
                             "chunk_sec": a.chunk if a.chunked else None}
+        if _beam_fb:
+            meta["asr_meta"]["beam_fallback"] = _beam_fb
         if dropped:
             meta["dropped_halluc"] = [{"start": st, "kind": k, "text": t}
                                       for st, t, k in dropped]
