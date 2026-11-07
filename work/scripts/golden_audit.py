@@ -61,6 +61,18 @@ def lrc_lines(rid, rj):
     return out
 
 
+def ja_text(rid, rj):
+    """该 run 的日文（02_asr_fix 全轨拼起来），供「原文有什么 → 译文必须有什么」类判据用。"""
+    buf = []
+    for jp in glob.glob(os.path.join(RUNS, rid, "02_asr_fix", rj, "asr_fix", "*.json")):
+        try:
+            d = json.load(io.open(jp, encoding="utf-8"))
+        except Exception:
+            continue
+        buf += [s.get("text", "") for s in (d.get("segments") or [])]
+    return "".join(buf)
+
+
 def sample_rjs():
     out = []
     for d in sorted(os.listdir(SAMPLES)):
@@ -110,17 +122,27 @@ def run_probe(pr, all_rjs, cache):
                              "text": "", "file": ""})
 
         # 4) 数字/字母保留
+        # ⚠️ 2026-11-07：原判据是「含字母数字的行占比 ≥3%」，太脆 ——
+        # RJ1458584 只有 2.8%（罩杯只在 5 行里出现）就被判违规，
+        # 但实际 `L…M…` `M罩杯` 全都保留了，是**阈值误报**。
+        # 改成条件式（和 DLR-02 同思路）：原文出现的字母/数字 token，
+        # 译文里必须找得到。只抓**大写字母与数字** —— 小写字母大概率是
+        # 网络用语 `w`/`ww`，04 已经确定性剔除，原文有译文没有才是对的。
         if pr.get("require_alnum"):
-            withnum = sum(1 for _, t in lines if re.search(r"[0-9A-Za-z]", t))
-            ratio = withnum / max(len(lines), 1)
-            if ratio < 0.03:
-                viol.append({"rj": rj, "hit": "含数字/字母行仅 %.1f%%" % (100 * ratio),
+            ja_all = ja_text(rid, rj)
+            toks = sorted(set(re.findall(r"\d+|[A-Z]{1,3}", ja_all)))
+            zh_all = "".join(t for _, t in lines)
+            miss = [t for t in toks if t not in zh_all]
+            if miss:
+                viol.append({"rj": rj, "hit": "原文有 %s，译文未保留" % "/".join(miss[:5]),
                              "text": "", "file": ""})
         elif pr.get("require_digit"):
-            withnum = sum(1 for _, t in lines if re.search(r"\d", t))
-            ratio = withnum / max(len(lines), 1)
-            if ratio < 0.05:
-                viol.append({"rj": rj, "hit": "含数字行仅 %.1f%%" % (100 * ratio),
+            ja_all = ja_text(rid, rj)
+            toks = sorted(set(re.findall(r"\d+", ja_all)))
+            zh_all = "".join(t for _, t in lines)
+            miss = [t for t in toks if t not in zh_all]
+            if miss:
+                viol.append({"rj": rj, "hit": "原文有数字 %s，译文未保留" % "/".join(miss[:5]),
                              "text": "", "file": ""})
 
         # 4b) 原文有生殖词 → 译文必须有对应词（降级检测）
@@ -141,12 +163,20 @@ def run_probe(pr, all_rjs, cache):
                                  "text": "", "file": ""})
 
         # 5) 纯标点碎行（lim=0 时只抓「去掉标点后为空」）
+        # ⚠️ 2026-11-07：**纯省略号行不算碎行** —— 那是 `fill_timeline` 补时间轴的
+        # 占位符（MEMORY 有记：补完「…」后不能再用 --from 01/03/04 重跑）。
+        # 只抓「？/！」这类真·标点孤片，它们才是切分或漏译的信号。
+        # 实测：RJ1260535 121.78 原文是 17.8 秒的 `お?あ、いけいけ、出せ出せ…`，
+        # 译文只有「？」——整段漏译，探针抓到是对的。
         if pr.get("max_len_for_punct_only") is not None:
             lim = pr["max_len_for_punct_only"]
             for fn, t in lines:
                 core = re.sub(r"[\s，。！？…~♡♪、,.!?ー～]", "", t)
-                if len(core) <= lim:
-                    viol.append({"rj": rj, "hit": "纯标点行", "text": t[:12], "file": fn})
+                if len(core) > lim:
+                    continue
+                if not re.search(r"[？！?!]", t):
+                    continue        # 纯省略号占位符，跳过
+                viol.append({"rj": rj, "hit": "纯标点行", "text": t[:12], "file": fn})
 
     # 打分：无违规 100；每处扣 20，最低 0
     score = max(0, 100 - 20 * len(viol))
