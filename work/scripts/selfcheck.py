@@ -218,6 +218,24 @@ def metrics(rid):
                 ta += 1
     out.update({"rows": n, "chars": ch, "avg_len": round(ch / n, 2) if n else 0,
                 "ellipsis_pct": round(100.0 * ell / n, 1) if n else 0, "pronoun": ta})
+
+    # ASR 时间空洞（2026-11-08 新增）
+    # RJ1458584 实测：v2 在 247.1→277.1 有 **30 秒空白**，而原文那段是角色
+    # 在念 `A B C D E F G H`（数罩杯等级）—— v2 全丢，v3 完整保留。
+    # 「最大空洞」比「覆盖率」更能反映漏听：覆盖率会被「大段吞静音」掩盖
+    # （v2 覆盖率 73% 反而高于 v3 的 66%，但 v2 漏了 30 秒内容）。
+    segs = []
+    for jp in glob.glob(os.path.join(RUNS, rid, "01_asr", "*", "asr", "*.json")):
+        try:
+            d = json.load(io.open(jp, encoding="utf-8"))
+        except Exception:
+            continue
+        segs += [(float(s["start"]), float(s["end"])) for s in (d.get("segments") or [])]
+    segs.sort()
+    if len(segs) > 1:
+        gaps = [segs[i + 1][0] - segs[i][1] for i in range(len(segs) - 1)]
+        out["asr_max_gap"] = round(max(gaps), 1)
+        out["asr_gap5"] = sum(1 for g in gaps if g > 5)
     # lexical
     lp = os.path.join(d6, "lexical_audit.json")
     if os.path.isfile(lp):
@@ -282,19 +300,23 @@ def main():
         results.append(m)
 
     # ---- 输出表 ----
-    print("\n%-11s %6s %6s %6s %6s %6s %-18s %-6s %s"
-          % ("RJ", "行", "均字", "…%", "代词", "风险", "lexical", "tier", "可交付"))
+    print("\n%-11s %6s %6s %6s %6s %6s %6s %-18s %-6s %s"
+          % ("RJ", "行", "均字", "…%", "代词", "风险", "空洞s", "lexical", "tier", "可交付"))
     for m in results:
         lx = m.get("lex") or {}
         lxs = "脱%d/省%d/音%d" % (lx.get("content_drop", 0), lx.get("ellipsis_only", 0),
                                   lx.get("translit", 0))
-        print("%-11s %6d %6.1f %6.1f %6d %6d %-18s %-6s %s"
+        gap = m.get("asr_max_gap", 0)
+        gs = "%.1f%s" % (gap, "!" if gap >= 15 else "")
+        print("%-11s %6d %6.1f %6.1f %6d %6d %6s %-18s %-6s %s"
               % (m["rj"], m["rows"], m["avg_len"], m["ellipsis_pct"],
-                 m["pronoun"], m.get("person_risk", 0), lxs, m.get("tier", ""),
+                 m["pronoun"], m.get("person_risk", 0), gs, lxs, m.get("tier", ""),
                  "✅" if m.get("deliver_ok") else "❌" + ",".join(k for k, _ in m.get("bad") or [])))
     tot = sum(m["rows"] for m in results)
     print("\n合计 %d 行；可交付 %d / %d"
           % (tot, sum(1 for m in results if m.get("deliver_ok")), len(results)))
+    print("「空洞s」= ASR 相邻段最大间隔；≥15s 标 ! —— 原文可能有整段被漏听"
+          "（2026-11-08 RJ1458584：v2 有 30s 空洞，丢掉了 A~H 十四个罩杯字母）")
 
     # ---- 更新价值表（样品集动态进化）----
     import datetime
@@ -322,18 +344,23 @@ def main():
                                 "SELFCHECK_%s.md" % day)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     L = ["# 标准样自检 %s" % day, "",
-         "| RJ | 行 | 均字 | …%% | 代词 | 风险 | lexical | 可交付 |",
-         "|---|---|---|---|---|---|---|---|"]
+         "| RJ | 行 | 均字 | …%% | 代词 | 风险 | 空洞s | lexical | 可交付 |",
+         "|---|---|---|---|---|---|---|---|---|"]
     for m in results:
         lx = m.get("lex") or {}
-        L.append("| %s | %d | %.1f | %.1f | %d | %d | 脱%d/省%d/音%d | %s |"
+        gap = m.get("asr_max_gap", 0)
+        L.append("| %s | %d | %.1f | %.1f | %d | %d | %.1f%s | 脱%d/省%d/音%d | %s |"
                  % (m["rj"], m["rows"], m["avg_len"], m["ellipsis_pct"], m["pronoun"],
-                    m.get("person_risk", 0), lx.get("content_drop", 0),
+                    m.get("person_risk", 0), gap, "!" if gap >= 15 else "",
+                    lx.get("content_drop", 0),
                     lx.get("ellipsis_only", 0), lx.get("translit", 0),
                     "✅" if m.get("deliver_ok") else "❌"))
     L.append("")
     L.append("合计 %d 行；可交付 %d / %d" % (tot, sum(1 for m in results if m.get("deliver_ok")),
                                         len(results)))
+    L.append("")
+    L.append("> **空洞s** = ASR 相邻段最大间隔，≥15s 标 `!`。原文可能有整段被漏听——"
+             "2026-11-08 实测 RJ1458584 的 v2 有 30s 空洞，丢掉了 A~H 十四个罩杯字母。")
     io.open(out, "w", encoding="utf-8").write("\n".join(L) + "\n")
     print("报表 → %s" % out)
 
