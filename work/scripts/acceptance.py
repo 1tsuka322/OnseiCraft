@@ -41,7 +41,12 @@ def latest_runs():
     for d in sorted(glob.glob(os.path.join(ROOT, "runs", "*_production"))):
         m = json.load(open(os.path.join(d, "manifest.json"), encoding="utf-8"))
         out.setdefault(m["project"], []).append(os.path.basename(d))
-    return {k: max(v) for k, v in out.items()}
+    res = {k: max(v) for k, v in out.items()}
+    # ⚠️ 2026-11-08 修：`runs/` 里还有**标准样品**的 run（11 个，`work/samples/` 用的），
+    # 它们不进 `kikoerusubtitle/`。不过滤会让第 2/3 条把样品也算进去 ——
+    # 报「28 部成品 = run」且样品全部"不一致"，数字看着像 17 部全坏了。
+    # 口径：只认 `kikoerusubtitle/` 里真有目录的作品。
+    return {k: v for k, v in res.items() if os.path.isdir(os.path.join(PROD, k))}
 
 
 def h(p):
