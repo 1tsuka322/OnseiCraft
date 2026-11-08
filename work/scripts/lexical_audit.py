@@ -723,10 +723,16 @@ def audit_track(rows, segs, cfg):
         return []
     segs = sorted(segs, key=lambda z: float(z.get("start") or 0))
     starts = [float(s.get("start") or 0) for s in segs]
+    # ⚠️ 2026-11-08：容差从 0.05 放宽到 1.2 秒。
+    # 译文（LRC 行）的时间戳常常比对应 ASR 段**提前 0.3~1.1 秒**（cue 起点 vs 段起点），
+    # 用 0.05 会把这一行判给**上一段**，导致本段"没有中文"、上一段"中文全是拟声"
+    # → 两边都误报。RJ1065777 743.20 实测：`仮のとこで小刻みに絞りながら`（739.68-743.20）
+    # 的译文在 738.59，而 746.32 的「啾噗啾噗」被算进这一段 → content_drop。
+    # 1.2 秒足以覆盖实测偏移，又不至于把上一段末尾的句子抢过来。
     owner = [-1] * len(rows)
     j = -1
     for i, (t, _zh) in enumerate(rows):
-        while j + 1 < len(segs) and starts[j + 1] <= t + 0.05:
+        while j + 1 < len(segs) and starts[j + 1] <= t + 1.2:
             j += 1
         if j >= 0:
             owner[i] = j

@@ -88,7 +88,31 @@ def find_audio(run_dir, rj, name):
     return None
 
 
-def audit_run(run_dir, min_gap=20.0, detail=False):
+def vad_speech_ratio(wav, sr=16000):
+    """用 Silero VAD 判断一段音频里「语音」占多少比例。
+
+    ⚠️ 为什么不能只用能量判据：2026-11-08 RJ1289104 的 241 秒「可疑空洞」
+    （能量 vs 中位 +2.5dB），切出来单独识别只出 1 段且是幻觉
+    `次の動画でお会いしましょう` —— 实际是纯音效（深喉段）。
+    **能量高 ≠ 有语音。** VAD 才是判「有没有人说话」的正确工具。
+
+    注意：项目**不用 VAD 做整轨识别**（已实测否决），这里只当诊断判据。
+    """
+    try:
+        from faster_whisper.vad import VadOptions, get_speech_timestamps
+    except Exception:
+        return None
+    try:
+        ts = get_speech_timestamps(wav, VadOptions(), sampling_rate=sr)
+    except Exception:
+        return None
+    if not ts:
+        return 0.0
+    speech = sum(t["end"] - t["start"] for t in ts)
+    return round(speech / max(len(wav), 1), 3)
+
+
+def audit_run(run_dir, min_gap=20.0, detail=False, use_vad=False):
     try:
         m = json.load(io.open(os.path.join(run_dir, "manifest.json"), encoding="utf-8"))
     except Exception:
@@ -137,10 +161,17 @@ def audit_run(run_dir, min_gap=20.0, detail=False):
                 continue
             r = np.sqrt((seg[: nn * k].reshape(nn, k) ** 2).mean(axis=1))
             p90 = db(np.percentile(r, 90))
-            rows.append({"start": round(a, 1), "end": round(b, 1), "len": round(b - a, 1),
-                         "p90_db": round(p90, 1), "vs_med": round(p90 - med, 1),
-                         # 判据：空洞里的 90 分位能量接近整轨中位数 → 有人在说话
-                         "suspect": bool(p90 - med > -6.0)})
+            row = {"start": round(a, 1), "end": round(b, 1), "len": round(b - a, 1),
+                   "p90_db": round(p90, 1), "vs_med": round(p90 - med, 1),
+                   # 能量判据：空洞里的 90 分位能量接近整轨中位数 → 可能有声音
+                   "loud": bool(p90 - med > -6.0)}
+            if use_vad:
+                row["speech_ratio"] = vad_speech_ratio(seg, sr)
+                # VAD 判据：>30% 时长被判为语音 → 可疑漏听
+                row["suspect"] = bool((row["speech_ratio"] or 0) > 0.3)
+            else:
+                row["suspect"] = row["loud"]
+            rows.append(row)
         if rows:
             out.append({"rj": rj, "track": os.path.basename(jp)[:34],
                         "audio": os.path.basename(ap)[:30], "med_db": round(med, 1),
@@ -154,6 +185,8 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--min-gap", type=float, default=20.0)
     ap.add_argument("--detail", action="store_true")
+    ap.add_argument("--vad", action="store_true",
+                    help="用 Silero VAD 精判（能量判据会误报纯音效段）")
     a = ap.parse_args()
 
     dirs = []
@@ -170,19 +203,22 @@ def main():
 
     all_rows = []
     for d in dirs:
-        all_rows += audit_run(d, a.min_gap, a.detail)
+        all_rows += audit_run(d, a.min_gap, a.detail, a.vad)
 
     n_sus = sum(1 for r in all_rows for g in r["gaps"] if g.get("suspect"))
     n_all = sum(len(r["gaps"]) for r in all_rows)
     print("=== ASR 空洞审计（≥%.0f 秒）===" % a.min_gap)
-    print("%-11s %-34s %7s %8s %8s %s" % ("RJ", "轨", "空洞s", "p90dB", "vs中位", "判定"))
+    print("%-11s %-34s %7s %8s %8s %6s %s"
+          % ("RJ", "轨", "空洞s", "p90dB", "vs中位", "语音%", "判定"))
     for r in all_rows:
         for g in r["gaps"]:
             if not a.detail and not g.get("suspect"):
                 continue
-            print("%-11s %-34s %7.1f %8s %8s %s"
+            sr_ = g.get("speech_ratio")
+            print("%-11s %-34s %7.1f %8s %8s %6s %s"
                   % (r["rj"], r["track"], g["len"], g.get("p90_db", "—"),
-                     g.get("vs_med", "—"), "⚠️ 可疑漏听" if g.get("suspect") else "静音/拟声"))
+                     g.get("vs_med", "—"), ("%.0f" % (100 * sr_)) if sr_ is not None else "—",
+                     "⚠️ 可疑漏听" if g.get("suspect") else "静音/拟声"))
     print("\n合计 %d 处空洞，其中 **可疑漏听 %d 处**（空洞内能量接近整轨中位）" % (n_all, n_sus))
 
 

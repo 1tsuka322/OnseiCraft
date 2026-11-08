@@ -256,6 +256,21 @@ def metrics(rid):
         gaps = [segs[i + 1][0] - segs[i][1] for i in range(len(segs) - 1)]
         out["asr_max_gap"] = round(max(gaps), 1)
         out["asr_gap5"] = sum(1 for g in gaps if g > 5)
+
+    # 译文 / 日文字数比率（2026-11-08）
+    # 日译中的字数比通常在 0.7~1.1（日语有假名和助词，中文更短）。
+    # 比率掉到 0.6 以下 → 整体性漏译或翻译被截断；超过 1.3 → 啰嗦/加戏。
+    # 这条能抓住「逐行看不出问题、但整部少了一大截」的情况。
+    ja_chars = 0
+    for jp in glob.glob(os.path.join(RUNS, rid, "02_asr_fix", "*", "asr_fix", "*.json")):
+        try:
+            d = json.load(io.open(jp, encoding="utf-8"))
+        except Exception:
+            continue
+        ja_chars += sum(len(s.get("text", "")) for s in (d.get("segments") or []))
+    if ja_chars and ch:
+        out["ja_chars"] = ja_chars
+        out["zh_ja_ratio"] = round(float(ch) / ja_chars, 2)
     # lexical
     lp = os.path.join(d6, "lexical_audit.json")
     if os.path.isfile(lp):
@@ -366,6 +381,17 @@ def main():
             print("  %-11s %d/%d 落地（%.1f%%）错位 %d"
                   % (m["rj"], m.get("lock_landed"), m.get("lock_total"),
                      m.get("lock_rate") or 0, m.get("lock_misplaced")))
+
+    # 译文/日文字数比率异常：整部漏译或啰嗦
+    bad_ratio = [m for m in results
+                 if m.get("zh_ja_ratio") is not None
+                 and not (0.6 <= m["zh_ja_ratio"] <= 1.3)]
+    if bad_ratio:
+        print("\n⚠️ 译文/日文字数比率越界（正常 0.6~1.3）：")
+        for m in bad_ratio:
+            print("  %-11s 日文 %d 字 → 中文 %d 字（比率 %.2f）%s"
+                  % (m["rj"], m["ja_chars"], m["chars"], m["zh_ja_ratio"],
+                     " ← 疑似整体漏译/截断" if m["zh_ja_ratio"] < 0.6 else " ← 疑似啰嗦/加戏"))
 
     # ---- 更新价值表（样品集动态进化）----
     import datetime
