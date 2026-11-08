@@ -27,12 +27,15 @@ import os
 import re
 import shutil
 import sys
+import time
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))
+# ⚠️ 2026-11-08 修：原来多 dirname 了一层，指到 repo 根（那里没有 data/locks 也没有 tmp/daily），
+# 导致「缺 plan」全报错、一条锁也没写成。与 paths.ROOT 同口径：work 才是 ROOT。
+ROOT = os.path.dirname(HERE)
 LOCKS = os.path.join(ROOT, "data", "locks")   # 与 lock_coverage.py 同口径（不是 data/style/locks）
 
 # plan 文件 → run_id（人工确认过，写死比猜安全）
@@ -68,11 +71,38 @@ def read_lrc_map(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--plan", action="append", default=[],
+                    help="指定 plan 文件（可多次）。不给则扫默认的 repair_person_<RJ>.json")
     a = ap.parse_args()
 
+    # ---- 构造待处理清单 (plan_path, rj, run_id) ----
+    items = []
+    if a.plan:
+        for pp in a.plan:
+            cand = [pp, os.path.join(ROOT, pp)]
+            path = next((c for c in cand if os.path.exists(c)), None)
+            if not path:
+                print("⚠️ 找不到 plan：%s" % pp)
+                continue
+            m = re.search(r"(RJ\d+)", os.path.basename(path))
+            if not m:
+                print("⚠️ 文件名里没有 RJ 号：%s" % os.path.basename(path))
+                continue
+            rj = m.group(1)
+            rid = PLAN_RUN.get(rj)
+            if not rid:
+                found = sorted(glob.glob(os.path.join(ROOT, "runs", "*_%s_production" % rj)))
+                if not found:
+                    print("⚠️ 找不到 %s 的 run" % rj)
+                    continue
+                rid = os.path.basename(found[-1])
+            items.append((path, rj, rid))
+    else:
+        for rj, rid in PLAN_RUN.items():
+            items.append((os.path.join(ROOT, "tmp", "daily", "repair_person_%s.json" % rj), rj, rid))
+
     total = 0
-    for rj, rid in PLAN_RUN.items():
-        pp = os.path.join(ROOT, "tmp", "daily", "repair_person_%s.json" % rj)
+    for pp, rj, rid in items:
         if not os.path.exists(pp):
             print("⚠️ 缺 plan：%s" % pp)
             continue
@@ -106,7 +136,7 @@ def main():
             continue
         os.makedirs(LOCKS, exist_ok=True)
         if os.path.exists(lp):
-            shutil.copy2(lp, lp + ".bak_20261107")
+            shutil.copy2(lp, "%s.bak_%s" % (lp, time.strftime("%Y%m%d")))
         json.dump(locks, io.open(lp, "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
     print("\n合计写入 %d 条 lock%s" % (total, "（dry-run，未写盘）" if a.dry else ""))
