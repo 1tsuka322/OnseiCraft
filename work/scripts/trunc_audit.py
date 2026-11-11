@@ -7,7 +7,11 @@ GPT 的结论：**句内语义截断不能仅凭长度确定**；能确定性判
 R1 `dangling`  行尾是悬空虚词/介词（「的」「在」「把」「被」「和」「跟」「从」「对」
                「就」「都」「很」「而且」「因为」「所以」「但是」…）→ 中文语法上不成立；
 R2 `unclosed`  引号/括号/书名号未闭合（「『』」计一对，允许跨行 → 只在**行内**开而不闭才算）；
-R3 `no_punct`  行内 ≥12 字却没有任何句末标点（。！？…）——长句无收束，疑似被砍掉后半。
+R3 `cut_comma` 行末以逗号/顿号「，」「、」收束——正常应留空，说明这行被从中间砍断了。
+
+⚠️ 2026-11-08 用户拍板废除「句末句号」规范（依据 Gemini GM5：番剧字幕组 / Netflix /
+   DLsite 官方汉化行末一律不加句号）。原来的 R3 `no_punct`（≥12 字无句末标点）因此在
+   全库必然全红、失去判别力，已改为只抓「行末逗号」这一确定性截断信号。
 
 ⚠️ 不判「长度比」：那是语义判断，需要初译对照，且 GPT 明确说只能当高召回筛子。
 
@@ -46,10 +50,10 @@ def scan_line(t):
     for o, c in PAIRS:
         if s.count(o) > s.count(c):
             hits.append(("unclosed", o))
-    # R3 长句无收束
+    # R3 行末逗号收束 = 被从中间砍断（正常应留空或带语气标点）
     body = re.sub(r"[「」『』（）()《》【】\s]", "", s)
-    if len(body) >= 12 and not re.search(r"[。！？…!?]$", s):
-        hits.append(("no_punct", str(len(body))))
+    if re.search(r"[，、,]$", s.strip()):
+        hits.append(("cut_comma", str(len(body))))
     return hits
 
 
@@ -90,7 +94,7 @@ def main():
             cur_ts = int(m.group(1)) * 60 + float(m.group(2))
             hs = scan_line(t)
             if hs and nxt_ts is not None and (nxt_ts - cur_ts) <= 1.2:
-                hs = [h for h in hs if h[0] != "no_punct"]
+                hs = [h for h in hs if h[0] != "cut_comma"]
             if not hs:
                 continue
             for rule, val in hs:
@@ -132,7 +136,7 @@ def main():
          "| dangling | %d | %.2f%% | 行尾悬空虚词/介词（语法上不成立） |" % (by_rule["dangling"], 100.0 * by_rule["dangling"] / max(total, 1)),
          "| weak_dangling | %d | %.2f%% | 行尾「了/吗/呢/地/得/着」——口语里常合法，仅供参考 |" % (by_rule["weak_dangling"], 100.0 * by_rule["weak_dangling"] / max(total, 1)),
          "| unclosed | %d | %.2f%% | 行内引号/括号未闭合 |" % (by_rule["unclosed"], 100.0 * by_rule["unclosed"] / max(total, 1)),
-         "| no_punct | %d | %.2f%% | ≥12 字却无句末标点（疑似被砍掉后半） |" % (by_rule["no_punct"], 100.0 * by_rule["no_punct"] / max(total, 1)),
+         "| cut_comma | %d | %.2f%% | 行末以逗号/顿号收束（被从中间砍断） |" % (by_rule["cut_comma"], 100.0 * by_rule["cut_comma"] / max(total, 1)),
          "", "## 按作品", "", "| 作品 | 命中 |", "|---|---|"]
     for k, v in by_work.most_common():
         L.append("| %s | %d |" % (k, v))

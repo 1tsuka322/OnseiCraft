@@ -98,7 +98,7 @@ MODEL_KEYS = [
     ("model_hymt", "HY-MT 模型（旧路线，可留空）", "file",
      "回退路线 engine=hymt 时使用"),
     ("asr_model", "语音识别模型（faster-whisper）", "dir",
-     "large-v2 目录，内含 model.bin / config.json"),
+     "large-v3 目录，内含 model.bin / config.json"),
     ("llama_dir", "llama.cpp 目录", "dir",
      "需要其中的 llama-server.exe"),
 ]
@@ -130,6 +130,31 @@ def get_model(key):
     if key == "asr_model":
         return d.get("asr_model", "")
     return (d.get("models") or {}).get(key, "")
+
+
+def effective_asr_model():
+    """当前**实际生效**的 ASR 模型（GPT R3 Q2）。
+
+    ⚠️ 界面以前只显示 `get_model("asr_model")`（配置里那个字段）。配置为空时界面
+    什么都不显示，而实际跑的是代码默认值；配置写的是旧值（如 v2）时界面显示 v2，
+    但用户以为是最新默认 —— **「声明≠实际」的典型来源**（2026-11-10 实测：
+    安装版配置写死 v2、界面标签写 v3，实际跑了两天 v2）。
+
+    顺序与 01 的解析完全一致：环境变量 → 本地配置 → knobs 默认。
+    返回 `(值, 来源)`，界面把来源也显示出来，才看得出「这个值是配的还是默认的」。
+    """
+    for k in ("FW_MODEL", "KIKOERU_ASR_MODEL"):
+        v = (os.environ.get(k) or "").strip()
+        if v:
+            return v, k
+    v = get_model("asr_model")
+    if v:
+        return str(v), "pipeline.local.json"
+    try:
+        import knobs
+        return str(knobs._ASR_DEFAULT), "代码默认"
+    except Exception:                            # noqa: BLE001
+        return "", "未知"
 
 
 def check_models():

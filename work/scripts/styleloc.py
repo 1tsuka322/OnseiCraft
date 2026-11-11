@@ -56,6 +56,41 @@ OPTIONAL = ("terms_db.json", "translit_ok.txt", "ono_ja.txt",
 
 _CACHE = {}
 
+# 阶段依赖身份协议版本（2026-11-10，GPT R3 Q1）。
+# 改了「身份怎么算」就 +1，这样旧记录能被识别成「协议不同」而不是「内容不同」。
+PROTOCOL = 1
+
+
+def stage_identity(names, pkg=None):
+    """按**某个阶段实际声明的表**算一个身份（GPT R3 Q1 方案 A）。
+
+    为什么要有它：整包 `identity` 把 11 张表一把算，于是「只被 06 审计读的白名单」
+    改一行也会让 02 的记录失效——2026-11-10 实测：往 `translit_ok.txt` 加 3 行，
+    17 部作品的 02+ 全部判失效，而 02 根本不读这张表。
+
+    所以拆成两层（GPT 原话「保留整包身份用于来源追溯，另算阶段有效依赖身份用于失效判断」）：
+      - 整包 `identity`：跨机追溯「这份产物是用哪个知识包跑的」，**不用于判失效**
+      - 本函数返回的身份：只覆盖该阶段声明的表，**用于判失效**
+
+    身份 = 协议版本 + 每张表（名称, 存在与否, 内容哈希）。
+    **路径不进身份**（跨机可比）；路径只在 `resolve()` 的 `dir/source_path` 里做诊断。
+
+    返回 `{"identity": "v1@xxxx", "deps": {表名: {"exists": bool, "sha256": str}}}`。
+    `deps` 会被写进 manifest，供 acceptance 逐表比对（GPT 建议的迁移路径）。
+    """
+    pkg = pkg or resolve()
+    tabs = pkg.get("tables") or {}
+    deps, parts = {}, []
+    for n in sorted(set(names or [])):
+        t = tabs.get(n)
+        if t:
+            deps[n] = {"exists": True, "sha256": t["sha256"]}
+        else:
+            deps[n] = {"exists": False, "sha256": ""}
+        parts.append("%s:%s:%s" % (n, deps[n]["exists"], deps[n]["sha256"]))
+    agg = hashlib.sha256(("v%d|" % PROTOCOL + "|".join(parts)).encode()).hexdigest()[:12]
+    return {"identity": "v%d@%s" % (PROTOCOL, agg), "deps": deps}
+
 
 def _sha(p):
     try:

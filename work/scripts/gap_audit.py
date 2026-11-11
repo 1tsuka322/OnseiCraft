@@ -179,12 +179,164 @@ def audit_run(run_dir, min_gap=20.0, detail=False, use_vad=False):
     return out
 
 
+def halluc_candidates(run_dir, top=0):
+    """纯假名幻觉候选（D6，2026-11-08，依据 GPT G4）。
+
+    背景：01 只抓 `[A-Za-z]{3,}` 的拉丁幻觉；**纯假名幻觉**（`ああああ`、`んーーー`）没有判据，
+    因为 `avg_logprob` / `no_speech_prob` **从来没存进 json**，事后无法判断。
+    GPT 的判断是：不值得为此重跑 01；用**可观测特征联合排序**出候选、只供试听，不自动删。
+
+    四个特征（都在已有 json 里，零额外成本）：
+      ① 纯假名     —— 去掉标点后只剩假名/长音（无汉字、无数字、无拉丁）
+      ② 重复文本   —— 同一文本在本轨出现 ≥2 次（幻觉的典型形态：模型卡住复读）
+      ③ 密度异常   —— 字/秒 极高（≥8）或时长极短（≤0.4s）
+      ④ 时长异常   —— >12 秒却只有几个字（念不完或空转）
+
+    ⚠️ **只输出候选，绝不自动删**。低声耳语/拖音/气声可能既低能量又真实；
+       噪声音效也可能高能量。所以这里不做音频侧判断，把判断留给试听。
+    """
+    rj = os.path.basename(run_dir).split("_")[1] if "_" in os.path.basename(run_dir) else "?"
+    d = os.path.join(run_dir, "01_asr", rj, "asr")
+    if not os.path.isdir(d):
+        return [], []
+    KANA = re.compile(r"^[\u3040-\u309f\u30a0-\u30ff\u30fc\u30fb\u3001\u3002…‥・\s!?！？~〜ー—\-]+$")
+    halluc, frag = [], []
+    for p in sorted(glob.glob(os.path.join(d, "*.json"))):
+        try:
+            j = json.load(io.open(p, encoding="utf-8"))
+        except Exception:
+            continue
+        segs = j.get("segments") or []
+        norm = [re.sub(r"[\s、。…‥・!?！？~〜ー—\-]", "", (s.get("text") or "")) for s in segs]
+        track = os.path.basename(p)[:-5]
+
+        # ① 先切出「连续同文段」——这是 01 的分段碎片化，**不是幻觉**（D7 已量化 217 处）
+        i = 0
+        runs = {}
+        while i < len(segs):
+            k = i
+            while k + 1 < len(segs) and norm[k + 1] == norm[i] and norm[i]:
+                k += 1
+            n = k - i + 1
+            if n >= 3 and norm[i]:
+                durs = [float(segs[x].get("end") or 0) - float(segs[x].get("start") or 0)
+                        for x in range(i, k + 1)]
+                if max(durs) < 0.5:
+                    frag.append(dict(rj=rj, track=track, start=round(float(segs[i].get("start") or 0), 2),
+                                     end=round(float(segs[k].get("end") or 0), 2), n=n,
+                                     text=segs[i].get("text") or ""))
+            for x in range(i, k + 1):
+                runs[x] = n
+            i = k + 1
+
+        cnt = {}
+        for t in norm:
+            if t:
+                cnt[t] = cnt.get(t, 0) + 1
+        for idx, (s, t) in enumerate(zip(segs, norm)):
+            txt = (s.get("text") or "").strip()
+            if not txt or not t or not KANA.match(txt):
+                continue
+            dur = float(s.get("end") or 0) - float(s.get("start") or 0)
+            if dur < 0.3:
+                continue                       # 亚秒段是分段碎片，已在 frag 里统计
+            dens = len(t) / dur if dur > 0 else 99
+            dup = cnt.get(t, 1)
+            score, why = 0, []
+            if dup >= 2:
+                score += min(dup, 5) * 2
+                why.append("同文×%d" % dup)
+            if dens >= 8:
+                score += 3
+                why.append("密度%.1f字/秒" % dens)
+            if dur > 12 and len(t) <= 8:
+                score += 2
+                why.append("长%.1fs仅%d字" % (dur, len(t)))
+            if score <= 0:
+                continue
+            halluc.append(dict(rj=rj, track=track, start=round(float(s.get("start") or 0), 2),
+                               dur=round(dur, 2), dens=round(dens, 1), dup=dup,
+                               text=txt, score=score, why="；".join(why)))
+    halluc.sort(key=lambda x: -x["score"])
+    return (halluc[:top] if top else halluc), frag
+
+
+def timing_anomalies(run_dir, top=0):
+    """时间结构异常诊断（2026-11-10，GPT R2 Q6）。
+
+    GPT 的原话：「可以尽早标异常，但**不能称为物理上念不完**，更不能按字/秒自动删除」。
+    所以这里只输出**证据**，让人自己判断，一个字节都不改。
+
+    五项证据（全部来自已有 json，不用重跑 01）：
+      ① 段时长 vs 字数密度 —— 只做**粗排序**，不单独定罪
+      ② 首末词与段边界的偏差 —— 词级对齐塌缩会让首词比段晚很多 / 末词比段早很多
+      ③ 零时长词比例 —— 时间戳塌缩的直接证据
+      ④ 与下一段的重叠 —— 分块接缝重复解码
+      ⑤ 纯音效段（可选 --vad 才判）
+
+    输出按「证据条数」降序，最多 `top` 条。
+    """
+    rj = os.path.basename(run_dir).split("_")[1] if "_" in os.path.basename(run_dir) else "?"
+    d = os.path.join(run_dir, "01_asr", rj, "asr")
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for p in sorted(glob.glob(os.path.join(d, "*.json"))):
+        try:
+            j = json.load(io.open(p, encoding="utf-8"))
+        except Exception:
+            continue
+        segs = j.get("segments") or []
+        for i, sg in enumerate(segs):
+            txt = (sg.get("text") or "").strip()
+            if not txt:
+                continue
+            st = float(sg.get("start") or 0)
+            en = float(sg.get("end") or 0)
+            dur = en - st
+            n = len(re.sub(r"[\s、。…‥・!?！？~〜ー—\-]", "", txt))
+            ws = sg.get("words") or []
+            ev = []
+            # ① 密度（粗排序用，不单独定罪）
+            dens = n / dur if dur > 0 else 999
+            if dur > 0 and dens >= 8:
+                ev.append("密度%.1f字/秒" % dens)
+            # ② 首末词偏差
+            if ws:
+                fst = float(ws[0].get("start") or st)
+                lst = float(ws[-1].get("end") or en)
+                if fst - st > 1.0:
+                    ev.append("首词晚%.1fs" % (fst - st))
+                if en - lst > 1.0:
+                    ev.append("末词早%.1fs" % (en - lst))
+                # ③ 零时长词
+                z = sum(1 for w in ws if float(w.get("end") or 0) <= float(w.get("start") or 0))
+                if ws and z / len(ws) > 0.3:
+                    ev.append("零时长词%d/%d" % (z, len(ws)))
+            # ④ 与下一段重叠
+            if i + 1 < len(segs):
+                ov = en - float(segs[i + 1].get("start") or 0)
+                if ov > 0.5:
+                    ev.append("与下段重叠%.1fs" % ov)
+            if len(ev) >= 2:          # 单条证据不算，要求 ≥2 项互相印证
+                out.append(dict(rj=rj, track=os.path.basename(p)[:-5], t=round(st, 2),
+                                dur=round(dur, 2), chars=n, dens=round(dens, 1),
+                                ev=ev, text=txt))
+    out.sort(key=lambda x: -len(x["ev"]))
+    return out[:top] if top else out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rj", default="")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--min-gap", type=float, default=20.0)
     ap.add_argument("--detail", action="store_true")
+    ap.add_argument("--halluc", action="store_true",
+                    help="纯假名幻觉候选（D6）：按「重复/密度/时长」排序，只审计不删")
+    ap.add_argument("--timing", action="store_true",
+                    help="时间结构异常诊断（GPT Q6）：首末词偏差/零时长词/段重叠/密度，只标不改")
+    ap.add_argument("--top", type=int, default=0, help="--halluc / --timing 时只列前 N 条")
     ap.add_argument("--vad", action="store_true",
                     help="用 Silero VAD 精判（能量判据会误报纯音效段）")
     a = ap.parse_args()
@@ -200,6 +352,49 @@ def main():
         dirs.append(d)
     if not a.all and not a.rj:
         raise SystemExit("要 --rj 或 --all")
+
+    if a.timing:
+        rows = []
+        for d in dirs:
+            rows += timing_anomalies(d)
+        rows.sort(key=lambda x: -len(x["ev"]))
+        if a.top:
+            rows = rows[:a.top]
+        print("=== 时间结构异常（GPT Q6：只标异常，不代表内容有错）===")
+        print("%-11s %-26s %7s %6s %6s %5s %s" % ("RJ", "轨", "起(s)", "时长", "字数", "密度", "证据"))
+        for r in rows:
+            print("%-11s %-26s %7.2f %6.2f %6d %5.1f %s"
+                  % (r["rj"], r["track"][:26], r["t"], r["dur"], r["chars"], r["dens"],
+                     "；".join(r["ev"])))
+            print("      %r" % r["text"][:46])
+        print("")
+        print("合计 %d 条（要求 ≥2 项证据互相印证）。" % len(rows))
+        print("⚠️ 这是**时间戳异常**，不等于内容有错——字幕短但音频里确有完整台词的，属于对齐问题不是幻觉。")
+        return
+
+    if a.halluc:
+        rows, frag = [], []
+        for d in dirs:
+            h, f = halluc_candidates(d)
+            rows += h
+            frag += f
+        rows.sort(key=lambda x: -x["score"])
+        if a.top:
+            rows = rows[:a.top]
+        print("=== 纯假名幻觉候选（D6，只审计不删）===")
+        print("%-11s %-30s %7s %6s %6s %5s %s"
+              % ("RJ", "轨", "起(s)", "时长", "密度", "同文", "特征"))
+        for r in rows:
+            print("%-11s %-30s %7.2f %6.2f %6.1f %5d %s  %r"
+                  % (r["rj"], r["track"][:30], r["start"], r["dur"], r["dens"],
+                     r["dup"], r["why"], r["text"][:24]))
+        print("\n合计 %d 条幻觉候选。⚠️ 这是**候选清单，不是错误清单**——必须试听后才能定。" % len(rows))
+        if frag:
+            print("\n--- 另：连续同文段（分段碎片化，**不是幻觉**，归 01/02 处理）%d 处 ---" % len(frag))
+            for f in frag[:8]:
+                print("  %-11s %-26s %7.2f-%.2f 连续%d段 %r"
+                      % (f["rj"], f["track"][:26], f["start"], f["end"], f["n"], f["text"][:16]))
+        return
 
     all_rows = []
     for d in dirs:

@@ -40,7 +40,39 @@ GGUF = {
     "gguf_qwen_q4": (r"D:\fasterwhisperGUI-0.8.5.sfx\models\qwen2.5-7b-instruct-gguf"
                      r"\qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"),
 }
-WHISPER_NAME = "faster-whisper-large-v3"   # 2026-11-08 换回（见 internal/docs/experiments/ASR_V2V3_SAMPLES_20261108.md）
+def _knobs():
+    """读 `scripts/knobs.py`（旋钮的单一真相）。
+
+    用 `spec_from_file_location` 而不是 `import knobs`：不动 sys.path、不 import scripts 包
+    （那里有几十个模块，副作用不可控）。knobs.py 自己保证零依赖零副作用。
+    """
+    if _KNOBS[0] is not None:
+        return _KNOBS[0]
+    import importlib.util
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "scripts", "knobs.py")
+    spec = importlib.util.spec_from_file_location("_kikoeru_knobs", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    _KNOBS[0] = mod
+    return mod
+
+
+def _whisper_name():
+    """有效 ASR 模型名：env → pipeline.local.json → knobs 默认（单一真相在 knobs.asr_tag）。
+
+    ⚠️ 2026-11-10（GPT R3 Q2）：这里原来是**另一个写死的常量**，与 `knobs._ASR_DEFAULT`、
+    `asr.py::ASR_MODEL_DIRNAME`、UI 目录各存一份。改模型时漏一处就「声明≠实际」——
+    实测安装版配置写死 v2，界面显示 v3，实际跑了两天 v2。
+    现在只保留一个兜底字面量，其余全部从 knobs 取。
+    """
+    try:
+        return _knobs().asr_tag()
+    except Exception:
+        return "faster-whisper-large-v3"
+
+
+WHISPER_NAME = _whisper_name()   # 2026-11-08 换回 v3（见 ASR_V2V3_SAMPLES_20261108.md）
 
 # 每个阶段实际用到的模型（最小闭包）。**空列表 = 该阶段不调模型**：
 # 02/05/06 是纯确定性阶段，以前 names=None 会把 whisper + 全部 gguf 都算进指纹，
@@ -74,24 +106,6 @@ def resolved_config(cfg):
 
 def config_hash(cfg):
     return hashlib.sha256(_canon(resolved_config(cfg)).encode("utf-8")).hexdigest()
-
-
-def _knobs():
-    """读 `scripts/knobs.py`（旋钮的单一真相）。
-
-    用 `spec_from_file_location` 而不是 `import knobs`：不动 sys.path、不 import scripts 包
-    （那里有几十个模块，副作用不可控）。knobs.py 自己保证零依赖零副作用。
-    """
-    if _KNOBS[0] is not None:
-        return _KNOBS[0]
-    import importlib.util
-    p = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__)))), "scripts", "knobs.py")
-    spec = importlib.util.spec_from_file_location("_kikoeru_knobs", p)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    _KNOBS[0] = mod
-    return mod
 
 
 def env_whitelist(cfg, stage=None):

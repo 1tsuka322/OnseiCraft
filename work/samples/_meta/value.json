@@ -1,83 +1,119 @@
 {
  "RJ1618225": {
-  "runs": 4,
+  "runs": 8,
   "hits": 0,
-  "cold_streak": 4,
+  "cold_streak": 8,
   "last_hits": 0,
-  "last": "20261108",
+  "last": "20261111",
   "avg_hits": 0.0,
   "tier": "cold"
  },
  "RJ422356": {
-  "runs": 2,
-  "hits": 1,
+  "runs": 8,
+  "hits": 11,
   "cold_streak": 0,
   "last_hits": 1,
-  "last": "20261107",
-  "avg_hits": 0.5,
-  "tier": "normal"
- },
- "RJ1260535": {
-  "runs": 1,
-  "hits": 2,
-  "cold_streak": 0,
-  "last_hits": 2,
-  "last": "20261107",
-  "avg_hits": 2.0,
+  "last": "20261111",
+  "avg_hits": 1.38,
   "tier": "hot"
  },
+ "RJ1260535": {
+  "runs": 7,
+  "hits": 8,
+  "cold_streak": 3,
+  "last_hits": 0,
+  "last": "20261111",
+  "avg_hits": 1.14,
+  "tier": "cold"
+ },
  "RJ1331975": {
-  "runs": 1,
-  "hits": 2,
+  "runs": 7,
+  "hits": 16,
   "cold_streak": 0,
   "last_hits": 2,
-  "last": "20261107",
-  "avg_hits": 2.0,
+  "last": "20261111",
+  "avg_hits": 2.29,
   "tier": "hot"
  },
  "RJ1364304": {
-  "runs": 1,
-  "hits": 9,
+  "runs": 7,
+  "hits": 46,
   "cold_streak": 0,
-  "last_hits": 9,
-  "last": "20261107",
-  "avg_hits": 9.0,
+  "last_hits": 5,
+  "last": "20261111",
+  "avg_hits": 6.57,
   "tier": "hot"
  },
  "RJ1402883": {
-  "runs": 1,
-  "hits": 2,
-  "cold_streak": 0,
-  "last_hits": 2,
-  "last": "20261107",
-  "avg_hits": 2.0,
-  "tier": "hot"
+  "runs": 7,
+  "hits": 11,
+  "cold_streak": 3,
+  "last_hits": 0,
+  "last": "20261111",
+  "avg_hits": 1.57,
+  "tier": "cold"
  },
  "RJ1458584": {
-  "runs": 1,
-  "hits": 0,
-  "cold_streak": 1,
+  "runs": 7,
+  "hits": 7,
+  "cold_streak": 2,
   "last_hits": 0,
-  "last": "20261107",
-  "avg_hits": 0.0,
-  "tier": "normal"
+  "last": "20261111",
+  "avg_hits": 1.0,
+  "tier": "hot"
  },
  "RJ1601150": {
-  "runs": 1,
-  "hits": 0,
-  "cold_streak": 1,
-  "last_hits": 0,
-  "last": "20261107",
-  "avg_hits": 0.0,
+  "runs": 7,
+  "hits": 6,
+  "cold_streak": 0,
+  "last_hits": 1,
+  "last": "20261111",
+  "avg_hits": 0.86,
   "tier": "normal"
  },
  "RJ1667609": {
-  "runs": 3,
-  "hits": 2,
-  "cold_streak": 1,
+  "runs": 9,
+  "hits": 4,
+  "cold_streak": 2,
   "last_hits": 0,
-  "last": "20261108",
-  "avg_hits": 0.67,
+  "last": "20261111",
+  "avg_hits": 0.44,
   "tier": "normal"
+ },
+ "RJ1124502": {
+  "runs": 6,
+  "hits": 12,
+  "cold_streak": 0,
+  "last_hits": 1,
+  "last": "20261111",
+  "avg_hits": 2.0,
+  "tier": "hot"
+ },
+ "RJ1188708": {
+  "runs": 6,
+  "hits": 2,
+  "cold_streak": 5,
+  "last_hits": 0,
+  "last": "20261111",
+  "avg_hits": 0.33,
+  "tier": "cold"
+ },
+ "RJ9000021": {
+  "runs": 6,
+  "hits": 5,
+  "cold_streak": 0,
+  "last_hits": 1,
+  "last": "20261111",
+  "avg_hits": 0.83,
+  "tier": "normal"
+ },
+ "RJ9000022": {
+  "runs": 5,
+  "hits": 19,
+  "cold_streak": 0,
+  "last_hits": 3,
+  "last": "20261111",
+  "avg_hits": 3.8,
+  "tier": "hot"
  }
 }

@@ -781,7 +781,9 @@ STAGES = {
     "01_asr": {
         "desc": "ASR（+台本打轴/声纹）", "gpu": True,
         "knowledge": [],
-        "code": ["asr.py", "script_align.py", "asr_halluc.py"],
+        # knobs.py 由 S7 扫出来（2026-11-10）：asr.py 现在从 knobs._ASR_DEFAULT 取默认模型，
+        # 不登记就会「改了 knobs 但 01 指纹不变」。
+        "code": ["asr.py", "script_align.py", "asr_halluc.py", "knobs.py"],
         "run": stage_asr,
         "params": lambda ctx: {"ext": ctx.cfg.get("ext", "auto"),
                                "device": ctx.cfg.get("device"),
@@ -867,7 +869,11 @@ STAGES = {
     },
     "06_checks": {
         "desc": "门禁（check / scan / errata / 回归 / 覆盖层 / 语义覆盖）", "gpu": False,
-        "knowledge": ["asr_errata.json", "glossary.json", "stats.json", "coverage.json"],
+        # ⚠️ 2026-11-10（GPT R3 Q1）：`lexical_audit` 实际还读这两张审计白名单，
+        # 以前没登记 → 改白名单只让「整包身份」变，本阶段的依赖身份不变，
+        # 结果既不该失效的失效了（02），该失效的反而说不清（06）。现在补齐。
+        "knowledge": ["asr_errata.json", "glossary.json", "stats.json", "coverage.json",
+                      "translit_ok.txt", "ono_ja.txt"],
         # 由 selftest S7 维护：必须是「本阶段脚本 + import 闭包」。
         # 漏登记 = 改了代码但指纹不变（R156 的 03 盲区，就是靠 S7 才扫出来的）。
         "code": ["knobs.py", "check.py", "empty_check.py", "scan_violations.py", "errata_audit.py",
@@ -977,11 +983,17 @@ def execute(run, name, cfg, force=False, dry=False):
             sys.path.insert(0, paths.SCRIPTS)
         import styleloc as _SL
         _kp = _SL.resolve()
+        # 阶段依赖身份（GPT R3 Q1 方案 A）：整包 identity 只做追溯，判失效看这个。
+        _kd = _SL.stage_identity(know, _kp)
         _kp_rec = {"identity": _kp["identity"], "source_type": _kp["source_type"],
                    "source_path": _kp["source_path"],
                    "n_tables": len(_kp["tables"]),
                    "missing_required": _kp["missing_required"],
-                   "disabled": _kp["disabled"]}
+                   "disabled": _kp["disabled"],
+                   # ↓ 新增：本阶段实际声明的表 + 逐表哈希（acceptance 3c 按它比）
+                   "stage_identity": _kd["identity"],
+                   "protocol": _SL.PROTOCOL,
+                   "deps": _kd["deps"]}
     except Exception as _e:
         _kp_rec = {"error": str(_e)[:120]}
     run.begin_stage(name, params, inputs, know, code, cache_miss_reason=reason,

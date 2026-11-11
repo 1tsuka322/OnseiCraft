@@ -597,7 +597,10 @@ def group_text(rows, segs, i, bridge_prev=False):
         # 前一行的时间窗末端 = 本行起点；它伸进了段组（起点晚于 g0）才算跨边界
         if k >= 0 and rows[idx[0]][0] > g0 + 0.01 and (rows[k][1] or "").strip():
             idx.insert(0, k)
-    zh = "".join(rows[k][1] for k in idx)
+    # ⚠️ 2026-11-10（GPT R3 Q4）：显示行之间用空格拼，不 `"".join`。
+    # 直接拼会让相邻两行的字粘成一个并不存在的「词」，下游按词判断时误报
+    # （同 lexical_audit 的 `M`+`M`→`MM`，RJ1458584 实测）。
+    zh = " ".join(rows[k][1] for k in idx)
     return ja, zh, idx
 
 

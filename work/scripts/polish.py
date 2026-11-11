@@ -48,6 +48,24 @@ SPACER_ON = os.environ.get("KIKOERU_LRC_END_SPACER", "1") == "1"
 # 开：`KIKOERU_SPK_PREFIX=1`。开时泄漏人名归一成前缀（不判坏格删行）；
 # 关：维持 R28 行为（泄漏判坏格 → 退回初译）。
 SPK_PREFIX_ON = os.environ.get("KIKOERU_SPK_PREFIX", "0") == "1"
+# 行末句号剔除（2026-11-08 用户拍板，依据 Gemini GM5）。
+# 字幕行业惯例：番剧字幕组 / Netflix / DLsite 官方汉化行末一律不加句号；句号有强烈封口意味，
+# 破坏音声「耳边呢喃」的语气余韵。只保留有语气指向功能的 ？ ！ … ——。
+# 关掉用 KIKOERU_STRIP_PERIOD=0（回退到 2026-10-08 的「句末句号」规范）。
+STRIP_PERIOD = os.environ.get("KIKOERU_STRIP_PERIOD", "1") == "1"
+# 生造拟声封杀（2026-11-08 用户拍板 D9，依据 Gemini GM6 档 B）：
+# 咕啾 / 啾噗 / 啵啾 / 啾噜 / 毕恰 / 努恰 这类「用汉字凑日语音」的写法一律压成省略号。
+# 关掉用 KIKOERU_BAN_ONO=0（做 A/B 用）。
+BAN_ONO_ON = os.environ.get("KIKOERU_BAN_ONO", "1") == "1"
+BAN_ONO = ("咕啾", "啾噗", "啵啾", "啾啵", "噗啾", "啾噜", "毕恰", "努恰",
+           # 2026-11-08 GM9 回执新增（Gemini 逐条点名「生造」的）
+           "啾咕", "啾啾", "哔哔", "噗噗", "啾")
+# ⚠️ 必须**单次正则替换**，不能 for 循环逐个 replace：
+#    `啾啵啾啵` 里同时含「啾啵」和「啵啾」，逐个换会先命中倒序词、把原串拆成 `啾……啵`，
+#    留下半个「啾」（2026-11-08 实测）。re.sub 一趟扫完不会重扫已替换的部分。
+#    长词优先，避免短词先吃掉长词的前缀。
+BAN_ONO_RE = re.compile("|".join(sorted((re.escape(_x) for _x in BAN_ONO),
+                                       key=len, reverse=True)))
 
 try:
     import zhconv
@@ -199,6 +217,11 @@ def load_locks(out_dir):
     n = 0
     for k, v in (data or {}).items():
         if "|" not in k:
+            continue
+        # ⚠️ 2026-11-10（GPT R3 Q3）：`status` 为 retired / review_required 的条目**不参与匹配**。
+        # 换模型后锚不上的锁由 Gemini 逐条判过，判「丢弃」的标 retired（不删历史条目），
+        # 判「拿不准」的标 review_required —— 两者都不该继续往成品里塞。
+        if isinstance(v, dict) and (v.get("status") or "") in ("retired", "review_required"):
             continue
         fn, ts = k.split("|", 1)
         if fn.lower().endswith(".lrc"):   # review.py 的 key 带 .lrc，src 不带 → 归一化
@@ -909,6 +932,30 @@ def dejapanize(t):
     return t
 
 
+def finalize_line(t):
+    """**写盘前最后一道排版收尾**（2026-11-09）。
+
+    为什么需要它：`cleanup()` 是在 **cue 级**跑的，而显示行是之后由
+    `cues.render_display_lines()` 从 cue 中文切出来的——**切分本身会把标点留在每片末尾**
+    （`来 茶泡好了 请用` → 切成 `来 茶泡好了` / `请用。`）。
+    再加上 `apply_lock()` 会把人工锁的原文逐字写回。这两处都会绕过 `cleanup`。
+
+    实测：17 部成品残留 52 行行末句号 + 15 处生造拟声，全是这么漏的。
+
+    只做两件确定性的事，不改任何语义：
+      ① 剥行末句号（`KIKOERU_STRIP_PERIOD`）
+      ② 生造拟声封杀（`KIKOERU_BAN_ONO`）
+    """
+    if not t:
+        return t
+    if STRIP_PERIOD:
+        t = re.sub(r"[。．]+[」』）)\s]*$", "", t).rstrip()
+    if BAN_ONO_ON:
+        t = BAN_ONO_RE.sub("……", t)
+        t = re.sub(r"……(?:\s*……)+", "……", t)   # 连着替换出的多个省略号并成一个
+    return t
+
+
 def cleanup(t, stats):
     if not t:
         return t
@@ -931,17 +978,29 @@ def cleanup(t, stats):
     # 只删「独立出现」的 w（前后不是字母），避免误伤英文单词。
     # 注意 `ww` 是 2 字母，会被 lexical 的 LATIN2 判成拉丁残留 —— 剔掉同时解决两个问题。
     t = re.sub(r"(?<![A-Za-z])[wｗ]+(?![A-Za-z])", "", t)
+    # 档 B 生造音译封杀（D9，2026-11-08，依据 Gemini GM6）。
+    # Gemini 原话：「彻底封杀『咕啾』『努恰』『啾噜』『毕恰』等滑稽机翻」——
+    # 汉语里没有对应字，硬凑出来的字读者只能靠猜，信息量比省略号更低。
+    # ⚠️ 为什么放在 04 而不是 ZH_MAP：实测 03 根本不用遮蔽器，这些词是 **Sakura 自己写的**
+    #    （RJ377265 成品 109 处「咕啾」，而日语侧水音只有 10 处）。改 ZH_MAP 只影响 1/6397 行。
+    # ⚠️ 只封「确定是生造」的：啪叽/啪嗒/咻咻 是通用中文拟声，不动。
+    if BAN_ONO_ON:
+        t = BAN_ONO_RE.sub("……", t)
+        t = re.sub(r"…{2,}", "……", t)   # 「咕啾咕啾」→「…………」收成一对
     t = re.sub(r"\s{2,}", " ", t).strip()
     # 省略号归一：英文点串「...」/ 半角「…」/ 数量不对的「………」一律收敛，
     # 形态跟随该译者的真实习惯（三点还是六连点，见 style/stats.json 的 ellipsis_style）
     mk = (stats or {}).get("ellipsis_style", "……")
     t = re.sub(r"\.{2,}", "…", t)
     t = re.sub(r"…+", mk, t)
-    # 句末句号：**保留**（用户 2026-10-08 拍板「句末句号 + 句内空格」）。
-    # 之前这里是「句末不加句号」的老规范，实测 Sakura 带句号的输出更自然，
-    # 句号→逗号→空格的连环转换反而是「机械感」元凶。只清理异常形态：
+    # 句末句号：2026-11-08 用户拍板**不再加句号**（Gemini GM5：字幕行末一律不加，
+    # 句号有封口感，破坏音声呢喃的语气余韵）。这里只清理异常形态，并按开关剔除行末句号。
+    # ⚠️ 保留 ？ ！ … ——，它们承载语气指向。
+    # ⚠️ 不要改成「用逗号收束」——cleanup 会把逗号抹成空格，反而回到「标点全没」。
     t = re.sub(r"[。．]{2,}", "。", t)          # 叠句号收成一个
     t = re.sub(r"[。．]+(?=[！？!?])", "", t)   # 句号后紧跟叹号/问号时，句号多余
+    if STRIP_PERIOD:
+        t = re.sub(r"[。．]+[」』）)\s]*$", "", t).rstrip()  # 行末句号剔除（含右引号前）
     # 顿号「、」：中文口语里少见，转逗号（下面统一再转空格）
     if stats.get("pct_dunhao", 0) <= 10:
         t = t.replace("、", "，")
@@ -2749,6 +2808,8 @@ def main():
                             # E1：句级锁定（人工修正逐字保留，不因重跑丢失）
                             _tx = apply_lock(src, fmt_lrc(_t), _tx, ln.get("text", ""),
                                              cue_idx=idx, row_times=_row_ts)
+                            # ⚠️ 锁/切分都会绕过 cue 级 cleanup → 这里补最后一道
+                            _tx = finalize_line(_tx)
                         if _tx and _tx == _prev_tx:
                             continue
                         _prev_tx = _tx
@@ -2761,6 +2822,7 @@ def main():
                     # E1：句级锁定（人工修正逐字保留，不因重跑丢失）
                     txt = apply_lock(src, fmt_lrc(ln["start"]), zh, ln.get("text", ""),
                                      cue_idx=idx)
+                    txt = finalize_line(txt)
                     f.write("%s%s\n" % (fmt_lrc(ln["start"]), txt))
                     keep += 1
         if unver:

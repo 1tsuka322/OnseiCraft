@@ -559,6 +559,16 @@ class SettingsPage(Page):
         self.out = self._path_row("字幕输出目录", settings.load_app()["prod_dir"], dir=True)
 
         self.add(self._section("模型（可一键下载）"))
+        # 显示**实际生效**的 ASR 模型（不是配置字段）—— GPT R3 Q2：
+        # 配置为空/过期时界面看不出实际用了什么，曾导致「界面 v3、实际 v2」跑了很久。
+        try:
+            _eff, _src = settings.effective_asr_model()
+            _lbl = QLabel("语音识别实际使用：%s（来源：%s）" % (_eff or "未配置", _src))
+            _lbl.setObjectName("Muted")
+            _lbl.setWordWrap(True)
+            self.add(_lbl)
+        except Exception:                        # noqa: BLE001
+            pass
         for it in models.ITEMS:
             self._model_row(it)
 

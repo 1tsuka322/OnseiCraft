@@ -25,20 +25,30 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import asr_halluc  # noqa: E402  三门槛幻觉判据（词级时间戳），与 asr.py 同目录
 
-# 默认 ASR 模型目录名（2026-11-06 起 = large-v2，见 resolve_asr_model 的注释）
-ASR_MODEL_DIRNAME = "faster-whisper-large-v2"
+# 默认 ASR 模型目录名（2026-11-08 起 = large-v3，见 resolve_asr_model 的注释）
+# ⚠️ 2026-11-10（GPT R3 Q2）：**不再自己写死**，从 `knobs._ASR_DEFAULT` 取 ——
+# 这里原来是独立的一份字面量，与 knobs / fingerprint / UI 目录各存一个值，
+# 换模型时漏改一处就是「声明≠实际」（实测：安装版跑了两天 v2 而界面显示 v3）。
+try:
+    import knobs as _knobs_mod
+    ASR_MODEL_DIRNAME = _knobs_mod._ASR_DEFAULT
+except Exception:                                # 单独拷出去用时也要能跑
+    ASR_MODEL_DIRNAME = "faster-whisper-large-v3"
 
 
 def resolve_asr_model(explicit=None):
     """解析 ASR 模型：返回 (值, 来源)。值可以是**本地目录**或 faster-whisper 的**规格名**。
 
     优先级：`--model` → FW_MODEL → KIKOERU_ASR_MODEL → pipeline.json → pipeline.local.json
-            → `<root>/models/faster-whisper-large-v2` → 规格名 "large-v2"（让 faster-whisper 自己下）。
+            → `<root>/models/faster-whisper-large-v3` → 规格名 "large-v3"（让 faster-whisper 自己下）。
 
-    ⚠️ 2026-11-06 起默认模型是 **large-v2**（不是 v3）。两条带官方台本的轨实测：
-    表記 CER 17.4%/19.0% vs v3 的 22.5%/21.2%，读音 CER 7.4%/9.6% vs 7.9%/10.5%，
-    汉字率也更高（19.6%/18.1% vs 17.0%/17.5%）。详见
-    `internal/docs/experiments/ASR_AB_20261106.md`。
+    ⚠️ **2026-11-08 起默认是 large-v3**（不是 v2）。11-06 曾因「带官方台本」的两条轨实测
+    改到 v2（表記 CER 17.4% vs 22.5%），但**生产 17 部全部无台本**，在 5 个无台本样品上
+    v3 **4 胜 1 平 0 负**，且快 2.4~6 倍。决定性个案 RJ1458584：v2 把念罩杯等级的 30 秒整段
+    吞成空白，v3 全保留。详见 `internal/docs/experiments/ASR_V2V3_SAMPLES_20261108.md`。
+
+    ⚠️ 这个常量是**最后兜底**：配置、环境变量全都没有时才会用到。
+    安装版的 `pipeline.local.json` 曾经还写死 `large-v2`（2026-11-10 修）。
 
     ⚠️ 2026-11-01 用户报错（OnseiCraft 0.1.3）：这里原来是
     `os.environ.get("FW_MODEL", r"D:\\fasterwhisperGUI-0.8.5.sfx\\models\\...")`——
@@ -97,7 +107,7 @@ def check_asr_model(model, source):
             "ASR 模型目录不存在：%s\n"
             "  来源：%s\n"
             "  → 修法（任选一条）：\n"
-            "     1) 打开 OnseiCraft → 设置 → 「语音识别模型」选到 faster-whisper-large-v2 目录\n"
+            "     1) 打开 OnseiCraft → 设置 → 「语音识别模型」选到 faster-whisper-large-v3 目录\n"
             "     2) 在 work/pipeline/pipeline.local.json 里写 \"asr_model\": \"<模型目录>\"\n"
             "     3) 设环境变量 FW_MODEL=<模型目录>\n"
             "  该目录里应有 model.bin / config.json / tokenizer.json / vocabulary.json"
@@ -106,7 +116,7 @@ def check_asr_model(model, source):
         raise SystemExit(
             "ASR 模型目录缺 model.bin：%s\n"
             "  来源：%s\n"
-            "  → 目录选对了但没下完，或选到了上一级。请重新下载/解压 faster-whisper-large-v2。"
+            "  → 目录选对了但没下完，或选到了上一级。请重新下载/解压 faster-whisper-large-v3。"
             % (model, source))
 
 
@@ -454,13 +464,19 @@ def transcribe_chunked(model, path, chunk=CHUNK_SEC, ov=CHUNK_OV, name="", facto
 
     out.sort(key=lambda d: d["start"])
     # 去掉重叠区产生的相邻重复句
-    ded, last = [], ""
+    # ⚠️ 2026-11-08（GPT R2 Q3）：**必须带时间条件**。
+    # 原来只比文本、不看时间 → 相隔几十秒的「好き好き」真实复读也会被删掉一段。
+    # 只有「与上一段在时间上重叠或几乎首尾相接」才可能是分块 overlap 的重复解码产物。
+    ded, last_key, last_end, dropped = [], "", 0.0, 0
     for d in out:
         key = _re.sub(r"\s", "", d["text"])
-        if key and key == last:
+        if key and key == last_key and d["start"] - last_end < 0.5:
+            dropped += 1
             continue
-        last = key
+        last_key, last_end = key, d["end"]
         ded.append(d)
+    if dropped:
+        print("    [分块重叠重复已折叠] %d 段" % dropped, flush=True)
     return ded, total
 
 

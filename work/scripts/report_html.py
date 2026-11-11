@@ -151,6 +151,37 @@ def render(rid):
                     esc(v.get("summary") or "", 48)))
     L.append("</div>")
 
+    # ---- 按类别汇总（防 by_kind 误读）----
+    # ⚠️ manifest 的 gate.by_kind 列的是「该类的**所有**门禁」，不管红绿。
+    #    直接读会以为整类都红（RJ1228193 的日志写 output:["check","lexical"]，
+    #    实际 check 是绿的）。这里从每个门禁自己的 ok 重新派生，不猜、不复用 by_kind。
+    kinds = {}
+    for k, v in gates.items():
+        kd = KIND.get(k, "?")
+        slot = kinds.setdefault(kd, {"all": [], "bad": []})
+        slot["all"].append(k)
+        if not v.get("ok"):
+            slot["bad"].append(k)
+    if kinds:
+        L.append("<h2>按类别</h2>")
+        L.append("<p class='sub'>「全部」是该类别参与的门禁；只有「失败」里的才会拦住交付。"
+                 "manifest 的 <code>by_kind</code> 是类别成员清单，<b>不代表红绿</b>。</p>")
+        L.append("<ul>")
+        for kd in ("contract", "output", "audit"):
+            if kd not in kinds:
+                continue
+            slot = kinds[kd]
+            alltxt = "、".join(esc(x) for x in slot["all"])
+            if slot["bad"]:
+                badtxt = "、".join("<b>%s</b>" % esc(x) for x in slot["bad"])
+                L.append("<li>%s：全部 %d 项（%s）→ <span class='badge bad'>失败 %d</span> %s</li>"
+                         % (esc(KIND_CN.get(kd, kd)), len(slot["all"]), alltxt,
+                            len(slot["bad"]), badtxt))
+            else:
+                L.append("<li>%s：全部 %d 项（%s）→ <span class='badge ok'>全部通过</span></li>"
+                         % (esc(KIND_CN.get(kd, kd)), len(slot["all"]), alltxt))
+        L.append("</ul>")
+
     # ---- 可交付判定失败项 ----
     if deliver_bad:
         L.append("<h2>阻断交付的问题</h2>")

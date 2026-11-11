@@ -1318,6 +1318,108 @@ def check_emit_and_split(verbose):
     return bad
 
 
+def check_stage_identity(verbose=False):
+    """阶段依赖身份（2026-11-10，GPT R3 Q1 方案 A）。
+
+    ⚠️ 用**合成包**测，不碰真实 `data/style` 文件 —— 门禁中途崩掉不会留脏数据。
+    要验的是语义，不是某个具体哈希：
+      ① 只改「只有 06 声明」的白名单 → 02 的身份**不变**、06 的变
+      ② 改 02 也声明的表 → 02 的身份变
+      ③ 可选表被删 → 只影响声明它的阶段
+      ④ 身份里**不含路径**（跨机可比）
+    """
+    bad = []
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import styleloc as SL
+    except Exception as e:                       # noqa: BLE001
+        return ["import styleloc 失败：%s" % e]
+
+    S02 = ["asr_errata.json", "do_not_change.json"]
+    S06 = S02 + ["translit_ok.txt", "glossary.json"]
+    base = {"tables": {"asr_errata.json": {"sha256": "aaa"},
+                       "do_not_change.json": {"sha256": "bbb"},
+                       "translit_ok.txt": {"sha256": "ccc"},
+                       "glossary.json": {"sha256": "ddd"}}}
+    i02 = SL.stage_identity(S02, base)["identity"]
+    i06 = SL.stage_identity(S06, base)["identity"]
+
+    pkg = {"tables": dict(base["tables"])}
+    pkg["tables"]["translit_ok.txt"] = {"sha256": "ccc2"}
+    if SL.stage_identity(S02, pkg)["identity"] != i02:
+        bad.append("① 改白名单不该影响 02")
+    if SL.stage_identity(S06, pkg)["identity"] == i06:
+        bad.append("① 改白名单必须影响 06")
+
+    pkg2 = {"tables": dict(base["tables"])}
+    pkg2["tables"]["asr_errata.json"] = {"sha256": "aaa2"}
+    if SL.stage_identity(S02, pkg2)["identity"] == i02:
+        bad.append("② 改 errata 必须影响 02")
+
+    pkg3 = {"tables": {k: v for k, v in base["tables"].items() if k != "translit_ok.txt"}}
+    if SL.stage_identity(S02, pkg3)["identity"] != i02:
+        bad.append("③ 删白名单不该影响 02")
+    if SL.stage_identity(S06, pkg3)["identity"] == i06:
+        bad.append("③ 删白名单必须影响 06")
+
+    pkg4 = {"tables": dict(base["tables"]), "dir": "D:/别的地方"}
+    if SL.stage_identity(S02, pkg4)["identity"] != i02:
+        bad.append("④ 路径不该进身份")
+
+    if verbose:
+        for b in bad:
+            print("      ❌", b)
+    return bad
+
+
+def check_model_consistency(verbose=False):
+    """ASR 默认模型「单一真相」一致性（2026-11-10，GPT R3 Q2）。
+
+    为什么要有它：模型名曾经散在 6 处（knobs / fingerprint / asr.py / UI 目录 /
+    settings 文案 / 安装版 pipeline.local.json），换模型时漏一处就「声明≠实际」。
+    实测安装版配置写死 v2、界面显示 v3，**实际跑了两天 v2** 才发现。
+
+    这里只查**代码里的字面量**；配置与环境变量属于运行时，由 `knobs.asr_tag()` 负责。
+    """
+    bad = []
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    try:
+        import knobs
+        import asr
+    except Exception as e:                       # noqa: BLE001
+        return ["import 失败：%s" % e]
+    base = getattr(knobs, "_ASR_DEFAULT", "")
+    if not base:
+        bad.append("knobs._ASR_DEFAULT 为空")
+    if getattr(asr, "ASR_MODEL_DIRNAME", "") != base:
+        bad.append("asr.ASR_MODEL_DIRNAME(%s) ≠ knobs._ASR_DEFAULT(%s)"
+                   % (getattr(asr, "ASR_MODEL_DIRNAME", ""), base))
+    # UI 目录：正则读源码，不 import（studio 会拉 PySide6）
+    mp = os.path.join(root, "app", "studio", "models.py")
+    if os.path.exists(mp):
+        src = open(mp, encoding="utf-8").read()
+        m = re.search(r'"key":\s*"asr_model".*?"subdir":\s*"([^"]+)"', src, re.S)
+        if not m:
+            bad.append("UI 目录里找不到 asr_model 的 subdir")
+        elif m.group(1) != base:
+            bad.append("UI 目录 subdir(%s) ≠ knobs._ASR_DEFAULT(%s)" % (m.group(1), base))
+    # 无 env 覆盖时，asr_tag() 必须回落到默认
+    saved = {k: os.environ.pop(k, None) for k in ("FW_MODEL", "KIKOERU_ASR_MODEL")}
+    try:
+        tag = knobs.asr_tag()
+    finally:
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+    if tag != base and not any(saved.values()):
+        bad.append("asr_tag() 回落值(%s) ≠ 默认(%s)" % (tag, base))
+    if verbose:
+        for b in bad:
+            print("      ❌", b)
+    return bad
+
+
 def main():
     verbose = "-v" in sys.argv or "--verbose" in sys.argv
     print("=== 0. cue 构建器验收（确定性/词数守恒/时间单调不重叠）===")
@@ -1565,6 +1667,14 @@ def main():
     print("   %d/%d 通过 %s" % (_n3q - len(bad3q), _n3q,
                               "✅" if not bad3q else "❌ " + str(bad3q)))
 
+    print("\n=== 3r. 阶段依赖身份（GPT R3 Q1：改白名单只影响 06）===")
+    bad3r = check_stage_identity(verbose)
+    print("   %s %s" % ("✅ 4 条语义全过" if not bad3r else "❌", bad3r if bad3r else ""))
+
+    print("\n=== 3s. ASR 模型单一真相（GPT R3 Q2）===")
+    bad3s = check_model_consistency(verbose)
+    print("   %s %s" % ("✅ 各处一致" if not bad3s else "❌", bad3s if bad3s else ""))
+
     print("\n=== 4. 全量泄漏告警（信息项）===")
     w = check_warnings(verbose)
     print("   告警 %d 处（含真重复/叠词，仅供参考）" % len(w))
@@ -1572,7 +1682,8 @@ def main():
     ok = (ok0 and not bad1 and not bad2 and not bad3 and not bad3b
           and not bad3c and not bad3d and not bad3d2 and not bad3e and not bad3e2
           and not bad3f and not bad3g and not bad3h and not bad3i and not bad3k and not bad3l
-          and not bad3m and not bad3n and not bad3o and not bad3p and not bad3q)
+          and not bad3m and not bad3n and not bad3o and not bad3p and not bad3q
+          and not bad3r and not bad3s)
     if SKIPPED:
         print("\n跳过 %d 项（缺数据，公开仓库 clone 下来的正常状态）：" % len(SKIPPED))
         for s in SKIPPED[:5]:

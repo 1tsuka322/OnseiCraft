@@ -145,7 +145,14 @@ def load_errata():
     if _ERRATA[0] is None:
         import styleloc  # noqa: E402
         p = styleloc.table("asr_errata.json")
-        _ERRATA[0] = json.load(open(p, encoding="utf-8"))["entries"] if os.path.exists(p) else []
+        entries = json.load(open(p, encoding="utf-8"))["entries"] if os.path.exists(p) else []
+        # ⚠️ 长词优先（Longest-Match-First），2026-11-08 依据 Gemini GM10 §3 落地。
+        # 原来是**按文件顺序**逐条 `str.replace`，于是短词会截胡长词且**静默失效**：
+        # 表里第 1 条 `写生→射精` 会把 `かだし写生` 先改成 `かだし射精`，
+        # 后面那条 `かだし写生→中出し射精` 就再也匹配不到（不报错、产物看着正常）。
+        # 排序只改执行顺序，不改条目内容；sorted 是稳定的，同长度仍保持文件顺序。
+        entries = sorted(entries, key=lambda e: -len(e.get("ja") or ""))
+        _ERRATA[0] = entries
     return _ERRATA[0]
 
 

@@ -140,6 +140,10 @@ def process(p, apply_):
     for key, v in list(d.items()):
         if not isinstance(v, dict):
             continue
+        # retired / review_required 不再尝试迁移（2026-11-10，GPT R3 Q3：
+        # 「仅针对同一目标版本跳过重复捞取」—— 人工已判过的别反复报）
+        if (v.get("status") or "") in ("retired", "review_required"):
+            continue
         zh = (v.get("zh") or "").strip()
         ja = norm_ja(v.get("ja") or "")
         if not zh or not ja or len(ja) < 6:

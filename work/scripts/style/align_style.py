@@ -277,7 +277,8 @@ def align_by_segment(subs, asr, min_ov=0.5, max_seg=18.0, min_ja=4):
             hit.extend(assign.get(i) or [])
         if not hit:
             continue
-        zh = "".join(t for _, t in sorted(hit))
+        # 空格拼：这是**语料**，拼接不能跨行造词（GPT R3 Q4）
+        zh = " ".join(t for _, t in sorted(hit))
         if not zh:
             continue
         pairs.append({"ja": u["text"], "zh": zh,

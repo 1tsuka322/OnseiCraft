@@ -305,7 +305,26 @@ def metrics(rid):
     return out
 
 
+def _require_deps():
+    """缺依赖就别跑（2026-11-08 血的教训）。
+
+    `selfcheck` 用 `sys.executable` 驱动管线。当前解释器若没装 jieba，
+    `lexical_audit` 会因中文分词返回空而把**每一行有实词的都判 content_drop**
+    —— 实测同一部作品：缺 jieba 报 10 条脱落，有 jieba 报 0 条。
+    2026-11-08 下午就因为这事得出「10 个样品 9 个红」的假结论。
+    """
+    try:
+        import jieba  # noqa: F401
+    except Exception:
+        msg = ["", "[selfcheck] 缺 jieba，拒绝运行。",
+               "  缺 jieba 时 lexical_audit 的 content_drop 会 100% 假阳性。",
+               "  请用：C:/Users/zyk/.workbuddy/binaries/python/envs/default/Scripts/python.exe", ""]
+        sys.stderr.write(chr(10).join(msg) + chr(10))
+        raise SystemExit(2)
+
+
 def main():
+    _require_deps()
     ap = argparse.ArgumentParser()
     ap.add_argument("--asr", action="store_true", help="跑 01（首次或改了 ASR）")
     ap.add_argument("--rj", nargs="*", default=None, help="（旧参数，等同 --only）")

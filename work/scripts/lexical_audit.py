@@ -303,6 +303,28 @@ def _jieba():
     return _JIEBA[0] or None
 
 
+def require_jieba():
+    """**没有 jieba 就别跑**（2026-11-08 血的教训）。
+
+    缺 jieba 时 `zh_tokens()` 返回空列表 → `zh_proposition_count()` 恒为 0 →
+    **每一行有实词的都会被判 `content_drop`**。实测同一部作品：
+    缺 jieba 报 10 条脱落，装上 jieba 报 **0 条**。
+
+    2026-11-08 下午就是因为 `selfcheck.py` 用 `sys.executable`（workbuddy 的 python 3.13，
+    没装 jieba）跑 06，得出「10 个样品 9 个红」的假结论，白折腾了半天。
+
+    所以这里**直接退出**，而不是静默产出一堆垃圾数字。
+    """
+    if _jieba() is None:
+        sys.stderr.write(
+            "\n[lexical_audit] ❌ 缺 jieba，拒绝运行。\n"
+            "  没有 jieba 时中文分词返回空 → 每一行有实词的都会判 content_drop（假阳性 100%）。\n"
+            "  请用装了 jieba 的解释器：\n"
+            "    C:/Users/zyk/.workbuddy/binaries/python/envs/default/Scripts/python.exe\n"
+            "  或 `pip install jieba`。\n\n")
+        raise SystemExit(2)
+
+
 def zh_tokens(zh):
     j = _jieba()
     if not j:
@@ -502,25 +524,32 @@ def _cands(zh):
     if not j:
         return []
     freq = j[0].dt.FREQ
-    toks = [w for w, _f in zh_tokens(zh) if re.fullmatch(r"[\u4e00-\u9fff]+", w)]
     out = []
-    for w in toks:
-        if len(w) >= 2 and freq.get(w, 0) <= 50:   # 多字且不成词
-            out.append(w)
-    # 把连续的「松散 token」连成串，再在串里取 2~4 字组合
-    loose = []
-    for w in toks + [""]:
-        if w and (len(w) == 1 or freq.get(w, 0) <= 50):
-            loose.append(w)
+    # ⚠️ 2026-11-10（GPT R3 Q4）：**空格/换行是硬边界，绝不跨**。
+    # 以前把整个 zh 丢给 jieba，空白被当分隔符丢掉 → 相邻两条显示行的 token 变成「相邻」，
+    # 被 `"".join` 连成串，造出原文里并不存在的「词」（`艾尔 M M` + `M 莉娜` → `MM`）。
+    # 现在按空白切段，每段内部才允许拼接。
+    for seg in re.split(r"\s+", zh or ""):
+        if not seg:
             continue
-        if len(loose) >= 2:
-            s = "".join(loose)[:8]
-            for n in range(2, 5):
-                for i in range(0, len(s) - n + 1):
-                    ab = s[i:i + n]
-                    if freq.get(ab, 0) <= 50:
-                        out.append(ab)
+        toks = [w for w, _f in zh_tokens(seg) if re.fullmatch(r"[\u4e00-\u9fff]+", w)]
+        for w in toks:
+            if len(w) >= 2 and freq.get(w, 0) <= 50:   # 多字且不成词
+                out.append(w)
+        # 把连续的「松散 token」连成串，再在串里取 2~4 字组合
         loose = []
+        for w in toks + [""]:
+            if w and (len(w) == 1 or freq.get(w, 0) <= 50):
+                loose.append(w)
+                continue
+            if len(loose) >= 2:
+                s = "".join(loose)[:8]
+                for n in range(2, 5):
+                    for i in range(0, len(s) - n + 1):
+                        ab = s[i:i + n]
+                        if freq.get(ab, 0) <= 50:
+                            out.append(ab)
+            loose = []
     return out
 
 
@@ -729,10 +758,13 @@ def audit_track(rows, segs, cfg):
     # → 两边都误报。RJ1065777 743.20 实测：`仮のとこで小刻みに絞りながら`（739.68-743.20）
     # 的译文在 738.59，而 746.32 的「啾噗啾噗」被算进这一段 → content_drop。
     # 1.2 秒足以覆盖实测偏移，又不至于把上一段末尾的句子抢过来。
+    # ⚠️ 2026-11-08 15:4x：做成可调（`KIKOERU_LEX_TOL`），因为样品集上出现「完整译文被判
+    # 脱落」的误报（RJ1124502 脱 10，逐条看都是译全了的）。要 A/B 直接设环境变量，别改常量。
+    _tol = float(os.environ.get("KIKOERU_LEX_TOL", "1.2"))
     owner = [-1] * len(rows)
     j = -1
     for i, (t, _zh) in enumerate(rows):
-        while j + 1 < len(segs) and starts[j + 1] <= t + 1.2:
+        while j + 1 < len(segs) and starts[j + 1] <= t + _tol:
             j += 1
         if j >= 0:
             owner[i] = j
@@ -743,7 +775,9 @@ def audit_track(rows, segs, cfg):
     hits = []
     for o, idxs in groups.items():
         ja = segs[o].get("text") or ""
-        zh = "".join(rows[i][1] for i in idxs)
+        # ⚠️ 用空格拼，不能 `"".join`：显示行是分开的两句，直接拼会造出假词。
+        # RJ1458584 实测：`…艾尔 M M` + `M 莉娜…` 拼成 `MM` → 误触 2 字母拉丁判据。
+        zh = " ".join(rows[i][1] for i in idxs)
         r = audit_row(ja, zh, cfg)
         if r:
             hits.append({"t": round(rows[idxs[0]][0], 2), "kind": r[0],
@@ -757,6 +791,7 @@ def audit_track(rows, segs, cfg):
 
 # ---------------------------------------------------------------- 主流程
 def main():
+    require_jieba()          # ⚠️ 缺 jieba 直接退出，见函数注释
     ap = argparse.ArgumentParser()
     ap.add_argument("--lrc", default=os.path.join(rootloc.PROD), help="含 RJ 子目录的父目录")
     ap.add_argument("--asr", default="", help="单个 run 目录，或含 <RJ>/<子目录>/ 的根")

@@ -163,12 +163,13 @@ def main():
     ck(not bad_h, "产物哈希对账 %d 个文件" % n_h,
        "不符 %d：%s" % (len(bad_h), bad_h[:3]) if bad_h else "")
 
-    # ---- 3c. 知识包身份（2026-11-06，GPT 议题 3）----
-    # 「用 34 条 presets」和「用 138 条私有表」跑出来的东西是不一样的，
-    # 但以前 manifest 只记 sha256/exists，验收层面无法区分 → 安装版静默降级查不出来。
-    # 这里独立重读当前知识包，和 run 记录的身份比（不是比两份声明，那仍会自洽）。
-    print("\n=== 3c. 知识包身份（manifest 记录 vs 当前实际）===")
-    bad_k = []
+    # ---- 3c. 阶段依赖身份（2026-11-10 重构，GPT R3 Q1 方案 A）----
+    # ⚠️ 以前这里拿「整包 identity」比，等于把「来源包变了」当成「02 依赖变了」。
+    # 2026-11-10 实测：往 `translit_ok.txt`（只被 06 的审计读）加 3 行，17 部 02+ 全判失效。
+    # 现在改成**逐表比对 02 记录的 deps**：只比 02 真正声明的那几张表。
+    # 整包 identity 仍留在 manifest 里做追溯，但**不参与**这里的判定。
+    print("\n=== 3c. 阶段依赖身份（逐表比对，只比 02 声明的表）===")
+    bad_k, mig_k = [], []
     try:
         sys.path.insert(0, os.path.join(ROOT, "scripts"))
         import styleloc as _SL
@@ -177,6 +178,7 @@ def main():
         cur_kp = None
         print("  ⚠️ 解析当前知识包失败：%s" % e)
     if cur_kp:
+        cur_tabs = cur_kp.get("tables") or {}
         for rj, rid in sorted(runs.items()):
             try:
                 m = json.load(open(os.path.join(ROOT, "runs", rid, "manifest.json"),
@@ -184,12 +186,31 @@ def main():
             except Exception:
                 continue
             kp = ((m.get("stages") or {}).get("02_asr_fix") or {}).get("knowledge_package") or {}
-            ident = kp.get("identity")
-            if ident and ident != cur_kp["identity"]:
-                bad_k.append("%s: %s ≠ %s" % (rj, ident, cur_kp["identity"]))
-        ck(not bad_k, "知识包身份 %s（%d 表）"
-           % (cur_kp["identity"], len(cur_kp["tables"])),
-           "不符 %d：%s" % (len(bad_k), bad_k[:3]) if bad_k else "")
+            deps = kp.get("deps")
+            if not deps:
+                # GPT：「缺身份不能直接放过，应标历史记录待迁移」
+                mig_k.append(rj)
+                continue
+            diff = []
+            for name, d in deps.items():
+                ct = cur_tabs.get(name)
+                if d.get("exists"):
+                    if not ct:
+                        diff.append("%s(已删除)" % name)
+                    elif ct.get("sha256") != d.get("sha256"):
+                        diff.append("%s(变了)" % name)
+                elif ct:
+                    diff.append("%s(新增)" % name)
+            if diff:
+                bad_k.append("%s: %s" % (rj, "/".join(diff[:3])))
+        msg = "依赖不符 %d：%s" % (len(bad_k), bad_k[:3]) if bad_k else ""
+        if mig_k:
+            msg = (msg + "｜" if msg else "") + "历史记录待迁移 %d（无逐表 deps，重跑 02 后自然补齐）" % len(mig_k)
+        ck(not bad_k and not mig_k,
+           "阶段依赖身份（02 声明 %d 表；整包 %s 仅供追溯）"
+           % (len(_SL.stage_identity(["asr_errata.json", "do_not_change.json"])["deps"]),
+              cur_kp["identity"]),
+           msg)
 
     print("\n=== 4. 门禁与自检 ===")
     py = sys.executable

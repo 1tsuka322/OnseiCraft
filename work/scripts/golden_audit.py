@@ -131,7 +131,8 @@ def run_probe(pr, all_rjs, cache):
         if pr.get("require_alnum"):
             ja_all = ja_text(rid, rj)
             toks = sorted(set(re.findall(r"\d+|[A-Z]{1,3}", ja_all)))
-            zh_all = "".join(t for _, t in lines)
+            # 空格拼：无分隔拼接会让相邻行的字粘成假 token（GPT R3 Q4）
+            zh_all = " ".join(t for _, t in lines)
             miss = [t for t in toks if t not in zh_all]
             if miss:
                 viol.append({"rj": rj, "hit": "原文有 %s，译文未保留" % "/".join(miss[:5]),
@@ -139,7 +140,8 @@ def run_probe(pr, all_rjs, cache):
         elif pr.get("require_digit"):
             ja_all = ja_text(rid, rj)
             toks = sorted(set(re.findall(r"\d+", ja_all)))
-            zh_all = "".join(t for _, t in lines)
+            # 空格拼：无分隔拼接会让相邻行的字粘成假 token（GPT R3 Q4）
+            zh_all = " ".join(t for _, t in lines)
             miss = [t for t in toks if t not in zh_all]
             if miss:
                 viol.append({"rj": rj, "hit": "原文有数字 %s，译文未保留" % "/".join(miss[:5]),

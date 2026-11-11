@@ -168,6 +168,33 @@ if STYLE_RULES:
 # 句末只认真正的句子结束，**不认「…」**（那是拖音/未说完，切了反而断线索）。
 CHUNK_ALIGN = os.environ.get("KIKOERU_CHUNK_ALIGN", "0") in ("1", "true", "True")
 PRAG_HINTS = os.environ.get("KIKOERU_PRAG_HINTS", "0") in ("1", "true", "True")
+
+# ---- D10（2026-11-08，依据 Gemini GM7）：行首拟声收敛 ----
+# 现象：`はぁ…はぁ…もう、だめ、我慢できない` 这类「拟声在前、实词在后」的行，
+#       Sakura 会把注意力放在重复的拟声上、误判该行信息熵极低，吐出短拟声后提前 EOS，
+#       后半句实词整段丢失（GM9 回执里 13 条「漏译」大半是这一类）。
+# 做法：**送模型之前**把行首的短拟声/气声压成 `……`，让实词成为句子的主体。
+#       Gemini 明确反对拆行（气声/台词交界处词级时间戳误差大，拆了会让实词时间轴漂移）。
+# 默认关：先 A/B 看效果，别直接上生产。
+PREFIX_ONO = os.environ.get("KIKOERU_PREFIX_ONO", "0") in ("1", "true", "True")
+# ⚠️ 气声字里**不能含「も」**：`もう`（已经）以 も 开头，会被吃掉一半（实测 `もう、だめ` → `う、だめ`）。
+#    `もぅ` 这种变体交给 A8 的 SAFE 表处理，不在这里收。
+_PREFIX_ONO_RE = re.compile(r"^(?:[はふあっんっーぁぃぅぇぉゃゅょひへほむぬぐちゅぴびぱば…、\s]+[…、\s]*)+")
+
+
+def _collapse_prefix_ono(ja):
+    """把行首的拟声/气声压成 `……`；整句都是拟声时**不动**（交给 A8 / 直出）。"""
+    if not PREFIX_ONO or not ja:
+        return ja
+    m = _PREFIX_ONO_RE.match(ja)
+    if not m or m.end() < 3:
+        return ja
+    rest = ja[m.end():]
+    # 剩余部分要有真内容才值得改；否则这行本来就是纯拟声
+    if len(re.sub(r"[、。…‥・\s!?！？~〜ー—\-「」]+", "", rest)) < 2:
+        return ja
+    return "……" + rest.lstrip()
+
 _SENT_END = re.compile(r"[。．！？!?」』）)】]\s*$")
 
 
@@ -834,7 +861,15 @@ def _sakura_retry_one(ja):
     rows = [x.strip() for x in strip_think(reply).splitlines() if x.strip()]
     if not rows:
         return "", False
-    cand = _clean_cell(rows[0])
+    # ⚠️ 2026-11-08（GPT R2 Q2 指出的**可确定丢行**）：
+    # 模型对长句常常返回**两行**，原来只取 `rows[0]` 会把后半句整段丢掉。
+    # 这不是「模型省译」，是我们自己的解析器截断——GM9 那 13 条漏译里有一部分就是这么来的。
+    # 口径：长句（≥12 字）把多行拼起来（同一句中文跨两行是正常的）；
+    #      短句仍只取首行（短句吐两行基本是回吐或脑补，拼起来更糟）。
+    if len(rows) > 1 and len(ja) >= 12:
+        cand = _clean_cell(" ".join(rows))
+    else:
+        cand = _clean_cell(rows[0])
     why, _nl = _sakura_bad(cand, ja)
     return cand, (not why)
 
@@ -941,6 +976,9 @@ def translate_block(block, prev_ctx, prev_raw=None):
     _pja, _pzh = _last_ctx(prev_ctx)
     if not _pja and prev_raw:
         _pja, _pzh = prev_raw
+    # D10：行首拟声收敛（默认关，KIKOERU_PREFIX_ONO=1 开）
+    if PREFIX_ONO and block:
+        block = [(i, _collapse_prefix_ono(t)) for i, t in block]
     # 短行隔离（见 _split_short）：只在混排时才拆，全短或全长都不动
     if len(block) > 1 and ENGINE == "sakura":
         parts = _split_short(block)

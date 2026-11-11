@@ -92,6 +92,9 @@ def audit_one(rj, lrc_root):
     for k, v in (d or {}).items():
         if "|" not in k:
             continue
+        # retired / review_required 的条目不参与覆盖率统计（2026-11-10，GPT R3 Q3）
+        if isinstance(v, dict) and (v.get("status") or "") in ("retired", "review_required"):
+            continue
         fn, ts = k.split("|", 1)
         if fn.lower().endswith(".lrc"):
             fn = fn[:-4]
