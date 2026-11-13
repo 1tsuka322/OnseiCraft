@@ -70,6 +70,30 @@ TOK=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill | grep 
 ⚠️ `update.check()` 返回 `None` 是**正确**的（当前已是最新），不是失败。
 ⚠️ 冒烟测试后**必须确认进程真的退出**，否则覆盖 exe 报 `Device or resource busy`。
 
+### ⚠️⚠️ 静默安装测试会污染用户的正式安装（2026-11-13 真实事故）
+
+Inno Setup 的静默安装**会写注册表卸载项、重建开始菜单快捷方式**——即使你装到临时目录。
+测试完如果直接 `rm -rf <临时目录>`，就会留下：
+
+- 注册表 `InstallLocation` 指向**已删除的目录**
+- 开始菜单快捷方式指向**已删除的 exe** → **用户点图标打不开**
+
+实测事故：装到 `work/tmp/install_test` 测试 → 删目录 → 用户开始菜单的 OnseiCraft 失效。
+
+**正确做法（二选一）**：
+
+```bash
+# A. 测完用安装包自己的卸载程序卸掉（推荐）
+"<临时目录>\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES
+
+# B. 测完手工清注册表 + 快捷方式
+#    删 HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{9E4C1A62-...}
+#    删 %APPDATA%\Microsoft\Windows\Start Menu\Programs\OnseiCraft\
+```
+
+**绝不要**只删目录就完事。
+另外测试时务必带 `/NOICONS`（不建桌面图标），减少污染面。
+
 ## 六、同步便携版安装目录
 
 `D:/aiwork/kikoeru/onseicraft/`（Inno 安装出来的那份）要跟着更新：

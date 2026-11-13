@@ -15,12 +15,16 @@ work/
 ├── requirements.txt         依赖（pip install -r）
 ├── CONTRIBUTING.md          参与方式
 │
-├── dist/                    发布产物：OnseiCraft-<版本>-Setup.exe（不进库）
+├── tmp/                     临时产物（不进库）
+│   ├── installer/           安装包：OnseiCraft-<版本>-Setup.exe
+│   ├── pydist/              PyInstaller 输出（打完安装包即可删）
+│   └── daily/               日常小工具与一次性脚本
 │
 ├── app/                     ★ OnseiCraft：桌面软件（管线的人类入口）
 │   ├── OnseiCraft.bat       双击启动
 │   ├── main.py              入口（先注入 KIKOERU_PROD，再 import pipeline_lib）
-│   ├── README.md            界面/数据流/配置/排错/打包
+│   ├── README.md            界面/数据流/配置/排错
+│   ├── BUILD.md             ★ 构建/打包/发版手册（exe → 安装包 → Release → 验证）
 │   ├── OnseiCraft.spec      PyInstaller 打包配置（onedir）
 │   ├── installer.iss        Inno Setup 安装包（自选目录/快捷方式/卸载）
 │   ├── ChineseSimplified.isl 安装向导中文语言包
