@@ -11,10 +11,18 @@
 | `asr_errata.json` | ASR 错字 → 正确写法 | `02_asr_fix` |
 | `do_not_change.json` | 表记差异白名单（**不许**当错字改） | `02_asr_fix` |
 | `glossary.json` | 术语 → 固定译法（进 prompt） | `03_translate` |
-| `pin_sets.json` | 允许集（同一词的多个可接受译法） | `05_term_lock` |
+| `pin_sets.json` | 允许集（同一词的多个可接受译法） | ⚠️ **当前没有任何阶段应用它**（`term_lock.py` 里零引用）；只作为提案/审计素材，改它**不会**改变成品 |
 
 运行时从 `data/style/` 读；公开仓库只带 `presets/` 里的公开副本。
 查找顺序与风格库一致：`KIKOERU_STYLE` → `data/style` → `presets`。
+
+> ⚠️ **别只看这四张。** 知识包（`styleloc`）实际登记了 **11 张表**，
+> 还包括 `translit_ok.txt`（音译白名单，只被 `06` 的 `lexical_audit` 读）、`ono_ja.txt`、
+> `terms_db.json`、`stats.json`、`coverage.json`、`user_rules.txt`、`style_guide.txt` 等。
+>
+> 判「改表要不要重跑」看的是**每个阶段声明的依赖**，不是整包：
+> `02` 只声明 `asr_errata` + `do_not_change`；`06` 声明 6 张（含两张审计白名单）。
+> 所以**改音译白名单只会让 `06` 失效**，不会让全部作品重新翻译。
 
 ## 错字条目格式
 

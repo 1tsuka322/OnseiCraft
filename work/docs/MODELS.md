@@ -12,7 +12,7 @@
 
 | 用途       | 模型                          | 大小              | 显存      | 必需     |
 | -------- | --------------------------- | --------------- | ------- | ------ |
-| 语音识别（01） |  `faster-whisper-large-v2`   | ~3GB            | 3~4.5GB | ✅      |
+| 语音识别（01） |  `faster-whisper-large-v3`   | ~3GB            | 3~4.5GB | ✅      |
 | 初译（03）   | **Sakura-7B**（默认）           | ~4.3GB (IQ4_XS) | ~4.3GB  | ✅      |
 | 初译备选（03） | `HY-MT1.5-7B`（翻译专用）         | ~4.3GB (Q4_K_M) | ~4.4GB  | 可选     |
 | 润色（04）   | `Qwen2.5-7B-Instruct`       | ~5.4GB (Q5_K_M) | ~5.6GB  | 仅旧路线需要 |
@@ -24,12 +24,17 @@
 > `engine=sakura` + `polish_cleanup_only=true`（04 只做确定性后处理）。  
 > 只有回退到旧路线（`engine=hymt` + `polish_cleanup_only=false`）才要 Qwen 做润色。
 
+> **ASR 默认 `large-v3`**（2026-11-08 起）。`large-v2` 只在「带官方台本」的素材上略好；
+> 而这类作品绝大多数没有台本 → 在无台本样品上 v3 **4 胜 1 平 0 负**，速度快 2.4~6 倍。
+> 决定性个案：v2 把某作品里一段 30 秒的罩杯等级播报**整段吞成空白**，v3 完整保留。
+> 所以除非你明确要处理带台本的作品，**装 v3 就对了**。
+
 ### 下载地址
 
 | 模型                       | 地址                                                                                              |
 | ------------------------ | ----------------------------------------------------------------------------------------------- |
 | llama.cpp                | <https://github.com/ggml-org/llama.cpp/releases> （下 `llama-*-bin-win-cuda-x64.zip`，解压即用）        |
-|  faster-whisper large-v2  | <https://huggingface.co/Systran/faster-whisper-large-v2> （或 `pip install faster-whisper` 首次自动下） |
+|  faster-whisper large-v3  | <https://huggingface.co/Systran/faster-whisper-large-v3> （或 `pip install faster-whisper` 首次自动下） |
 | Sakura-7B GGUF           | <https://github.com/Hengle/SakuraLLM> （模型列表里有 `sakura-7b-qwen2.5-v1.0-iq4xs.gguf`）              |
 | HY-MT1.5-7B GGUF         | <https://modelscope.cn/models/Tencent-Hunyuan/HY-MT1.5-7B-GGUF>                                 |
 | Qwen2.5-7B-Instruct GGUF | <https://modelscope.cn/models/Qwen/Qwen2.5-7B-Instruct-GGUF>                                    |
@@ -54,7 +59,7 @@
   "model_q5":     "D:/models/qwen2.5-7b-instruct-gguf/qwen2.5-7b-instruct-q5_k_m-00001-of-00002.gguf",
   "model_q4":     "D:/models/qwen2.5-7b-instruct-gguf/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"
  },
- "asr_model": "D:/models/faster-whisper-large-v2"
+ "asr_model": "D:/models/faster-whisper-large-v3"
 }
 ```
 
